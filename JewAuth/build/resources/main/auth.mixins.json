@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.tokenlogin.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "auth-refmap.json",
+  "client": [
+    "MinecraftClientAccessor",
+    "MultiplayerScreenMixin",
+    "ClientConnectionChannelInitMixin",
+    "DrawContextMixin",
+    "ChatHudMixin",
+    "PlayerListHudMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

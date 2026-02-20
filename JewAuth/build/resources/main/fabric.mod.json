@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "auth",
+  "version": "1.0",
+  "name": "JewAuth",
+  "description": "Login to Minecraft using a session token instead of Microsoft auth.",
+  "authors": [],
+  "contact": {},
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.tokenlogin.client.TokenLoginClient"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "auth.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "fabric-api": "*",
+    "minecraft": "~1.21.11"
+  }
+}
