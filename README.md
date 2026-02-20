@@ -44,4 +44,4 @@ Output: `build/libs/JewAuth-1.0.jar`
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](https://github.com/Axelebra/JewAuth/blob/main/JewAuth/LICENSE) for details.
