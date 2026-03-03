@@ -1,0 +1,60 @@
+plugins {
+    id 'fabric-loom' version '1.14-SNAPSHOT'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+loom {
+    mixin {
+        // Loom 1.12+ defaults to false (uses Tiny Remapper instead).
+        // We need the legacy AP to generate a refmap so mixin can
+        // resolve yarn names like "drawText" → intermediary at runtime.
+        useLegacyMixinAp = true
+        defaultRefmapName = "auth-refmap.json"
+    }
+}
+
+repositories {
+    // No extra repos needed — Netty is on Maven Central via Fabric/MC
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // Netty proxy handlers (SOCKS4, SOCKS5, HTTP CONNECT)
+    // These are NOT bundled with Minecraft's Netty — we JiJ them into the mod.
+    // Version must match the Netty version Minecraft ships (check gradle dependencies).
+    implementation "io.netty:netty-handler-proxy:4.1.97.Final"
+    include       "io.netty:netty-handler-proxy:4.1.97.Final"
+    implementation "io.netty:netty-codec-socks:4.1.97.Final"
+    include       "io.netty:netty-codec-socks:4.1.97.Final"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filteringCharset "UTF-8"
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.archives_base_name}" }
+    }
+}
