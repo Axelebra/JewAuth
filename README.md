@@ -1,57 +1,38 @@
 # JewAuth
 
-Fabric mod for Minecraft 1.21.11. Login with session tokens, manage proxies, swap accounts on the fly.
-
-**Use at your own risk.** This mod interacts with Minecraft's authentication in ways that may violate Mojang's ToS. You are solely responsible for any consequences — banned accounts, lost access, whatever. Don't come crying.
+A client-side Fabric mod for Minecraft 1.21.11.
 
 ---
 
 ## Features
 
-**Token Login**
-- Paste a JWT session token and inject it as your active session
-- Token expiry validation with live countdown
-- Restore your original session at any time
-- Token browser — browse and manage saved tokens
-
-**Account Manager**
-- Auto-parse accounts from launcher files (Prism, MultiMC, GDLauncher, plain .txt)
-- Refresh expired tokens via Microsoft auth chain
-- Dead list — dismiss accounts you don't want to see
-- Per-account notes and token caching
-
-**Proxy Support**
-- SOCKS4 / SOCKS5 / HTTP CONNECT — auto-detects working protocol
-- Route game connections through your proxy
-- Proxy browser with saved proxy list
-- Auth support (username/password)
-
-**Name Changer**
-- IGN mode — change your in-game name via Mojang API
-- Hider mode — client-side nick replacement across all rendering (chat, tab list, scoreboard)
-
-**Selfban**
-- One-click toggle to get yourself banned from a server (confirmation required)
-
----
+- **Token Login** — Authenticate using a JWT session token directly from the Multiplayer screen
+- **Session Restore** — Revert to your original session at any time
+- **Token Browser** — Browse, manage, and quick-paste saved tokens
+- **Account Manager** — Auto-parse accounts from Prism, MultiMC, GDLauncher, and plain text files
+- **Token Refresh** — Refresh expired tokens via Microsoft authentication chain
+- **Proxy Support** — SOCKS4, SOCKS5, and HTTP CONNECT with auto-detection and authentication
+- **Proxy Manager** — Save, edit, and switch between multiple proxy configurations
+- **Name Changer** — Change your IGN via the Mojang API
+- **Nick Hider** — Client-side name replacement across chat, tab list, and scoreboard
+- **Selfban** — One-click server self-ban with confirmation
 
 ## Installation
 
-1. Install [Fabric Loader](https://fabricmc.net/) for 1.21.11
+1. Install [Fabric Loader](https://fabricmc.net/) for Minecraft 1.21.11
 2. Install [Fabric API](https://modrinth.com/mod/fabric-api)
-3. Drop the mod jar into `.minecraft/mods/`
-4. Launch the game — everything lives on the Multiplayer screen
+3. Place the mod `.jar` in your `.minecraft/mods/` directory
 
-## Config
+## Configuration
 
-Stored in `.minecraft/config/tokenlogin/`. Proxy settings and cached tokens persist between sessions. Source launcher files are never modified.
-
----
+All config is stored in `.minecraft/config/tokenlogin/`. Source launcher files are never modified.
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 ---
 
-**Again: your accounts, your risk. No warranty. No support guarantees.**
+# ⚠️ USE AT YOUR OWN RISK
+
+This mod interacts with Minecraft's authentication and session management in ways that may violate Mojang's Terms of Service. The authors assume no responsibility for banned accounts, lost access, or any other consequences resulting from the use of this software. By using this mod, you accept full responsibility.
