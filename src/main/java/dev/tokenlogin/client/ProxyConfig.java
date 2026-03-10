@@ -30,6 +30,9 @@ public class ProxyConfig {
     private static String username = "";
     private static String password = "";
 
+    // ── Hypixel API key ────────────────────────────────────────────────────
+    private static String hypixelApiKey = "";
+
     // ── Public API — legacy fields ────────────────────────────────────────────
 
     public static String getAddress()  { return address; }
@@ -39,6 +42,9 @@ public class ProxyConfig {
     public static void setAddress(String v)  { address  = v != null ? v : ""; }
     public static void setUsername(String v)  { username = v != null ? v : ""; }
     public static void setPassword(String v)  { password = v != null ? v : ""; }
+
+    public static String getHypixelApiKey()        { return hypixelApiKey; }
+    public static void   setHypixelApiKey(String v) { hypixelApiKey = v != null ? v : ""; save(); }
 
     // ── Public API — proxy list ───────────────────────────────────────────────
 
@@ -118,6 +124,9 @@ public class ProxyConfig {
             if (obj.has("proxyUsername")) username = obj.get("proxyUsername").getAsString();
             if (obj.has("proxyPassword")) password = obj.get("proxyPassword").getAsString();
 
+            // Hypixel API key
+            if (obj.has("hypixelApiKey")) hypixelApiKey = obj.get("hypixelApiKey").getAsString();
+
             // Active key
             if (obj.has("activeProxy")) activeKey = obj.get("activeProxy").getAsString();
 
@@ -170,6 +179,9 @@ public class ProxyConfig {
             obj.addProperty("proxyAddress",  address);
             obj.addProperty("proxyUsername", username);
             obj.addProperty("proxyPassword", password);
+
+            // Hypixel API key
+            obj.addProperty("hypixelApiKey", hypixelApiKey);
 
             // Active key
             obj.addProperty("activeProxy", activeKey);

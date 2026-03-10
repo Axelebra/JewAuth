@@ -70,6 +70,10 @@ public class AccountEntry {
     public transient RefreshState refreshState = RefreshState.IDLE;
     public transient String       refreshError = "";
 
+    // ── Transient Skyblock data (fetched from Hypixel API) ─────────────────
+    public transient SkyblockFetcher.SkyblockInfo skyblockInfo = null;
+    public transient boolean skyblockFetching = false;
+
     // ── Computed helpers ──────────────────────────────────────────────────────
 
     public boolean hasRefreshCapability() {

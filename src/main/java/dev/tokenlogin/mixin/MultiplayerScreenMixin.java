@@ -1,6 +1,8 @@
 package dev.tokenlogin.mixin;
 
 import dev.tokenlogin.client.AccountEntry;
+import dev.tokenlogin.client.AccountStorage;
+import dev.tokenlogin.client.AntiKick;
 import dev.tokenlogin.client.NameChanger;
 import dev.tokenlogin.client.NickHider;
 import dev.tokenlogin.client.ProxyConfig;
@@ -76,10 +78,11 @@ public abstract class MultiplayerScreenMixin extends Screen {
     @Unique private volatile boolean tokenlogin$nameChangeInProgress = false;
 
     // =====================================================================
-    // Selfban toggle (bottom-right)
+    // Selfban + AntiKick toggles (bottom-right)
     // =====================================================================
 
     @Unique private ButtonWidget tokenlogin$selfbanButton;
+    @Unique private ButtonWidget tokenlogin$antikickButton;
 
     protected MultiplayerScreenMixin(Text title) { super(title); }
 
@@ -212,11 +215,21 @@ public abstract class MultiplayerScreenMixin extends Screen {
         ).dimensions(nameX + nameFieldW + gap + nameBtnW + gap, nameY, modeBtnW, h).build();
         this.addDrawableChild(tokenlogin$nameModeButton);
 
-        // ── Selfban toggle (bottom-right) ────────────────────────────────────
-        int selfbanW = 72;
-        int selfbanX = this.width - selfbanW - 4;
-        int selfbanY = this.height - h - 2;
+        // ── AntiKick toggle (bottom-right, left of selfban) ──────────────────
+        int antikickW = 72;
+        int selfbanW  = 72;
+        int gap2      = 2;
+        int selfbanX  = this.width - selfbanW - 4;
+        int antikickX = selfbanX - antikickW - gap2;
+        int selfbanY  = this.height - h - 2;
 
+        tokenlogin$antikickButton = ButtonWidget.builder(
+                tokenlogin$antikickLabel(),
+                btn -> { AntiKick.toggle(); btn.setMessage(tokenlogin$antikickLabel()); }
+        ).dimensions(antikickX, selfbanY, antikickW, h).build();
+        this.addDrawableChild(tokenlogin$antikickButton);
+
+        // ── Selfban toggle (bottom-right) ────────────────────────────────────
         tokenlogin$selfbanButton = ButtonWidget.builder(
                 tokenlogin$selfbanLabel(),
                 btn -> tokenlogin$handleSelfbanToggle()
@@ -363,15 +376,20 @@ public abstract class MultiplayerScreenMixin extends Screen {
     @Unique
     private void tokenlogin$applyAccountSession(AccountEntry account) {
         try {
+            // Use cached UUID if available, otherwise zero UUID as placeholder.
+            // Server authenticates by token — username/UUID here are cosmetic client-side.
             UUID uuid;
-            if (account.uuid == null || account.uuid.isBlank()) {
-                tokenlogin$loginWithToken(account.minecraftToken);
-                return;
+            if (account.uuid != null && !account.uuid.isBlank()) {
+                uuid = tokenlogin$parseUuid(account.uuid);
+            } else {
+                uuid = new UUID(0L, 0L);
             }
-            uuid = tokenlogin$parseUuid(account.uuid);
+
+            String displayName = (account.username != null && !account.username.isBlank())
+                    ? account.username : "Player";
 
             Session session = new Session(
-                    account.username,
+                    displayName,
                     uuid,
                     account.minecraftToken,
                     Optional.empty(),
@@ -385,11 +403,62 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
             tokenlogin$tokenField.setText(account.minecraftToken);
 
-            TokenLoginClient.LOGGER.info("Session applied from browser: {}", account.username);
+            TokenLoginClient.LOGGER.info("Session applied from browser: {} (skipped API)", displayName);
+
+            // Fire async update — resolves current username/UUID from the API
+            // and updates the AccountEntry + session if anything changed
+            tokenlogin$asyncUpdateUsername(account);
+
         } catch (Exception e) {
             tokenlogin$errorMessage = "Apply failed: " + e.getMessage();
             TokenLoginClient.LOGGER.warn("Failed to apply account session: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Background thread: calls the Minecraft profile API to get the current
+     * username/UUID for this token.  If the name changed (e.g. after a name
+     * snipe), updates the AccountEntry, persists it, and re-injects the
+     * session so the client shows the correct name.
+     */
+    @Unique
+    private void tokenlogin$asyncUpdateUsername(AccountEntry account) {
+        Thread t = new Thread(() -> {
+            try {
+                TokenManager.SessionInfo info = TokenManager.authenticate(account.minecraftToken);
+                this.client.execute(() -> {
+                    boolean changed = false;
+
+                    if (!info.username().equals(account.username)) {
+                        TokenLoginClient.LOGGER.info("Username updated: {} -> {}",
+                                account.username, info.username());
+                        account.username = info.username();
+                        changed = true;
+                    }
+
+                    String newUuid = info.uuid().toString();
+                    if (!newUuid.equalsIgnoreCase(account.uuid)) {
+                        account.uuid = newUuid;
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        // Persist updated identity
+                        AccountStorage.updateTokens(account);
+
+                        // Re-inject session with correct name
+                        TokenManager.applySession(info, account.minecraftToken);
+                        TokenLoginClient.LOGGER.info("Session re-injected with updated identity: {}",
+                                info.username());
+                    }
+                });
+            } catch (Exception e) {
+                // Non-fatal — session is already set, just couldn't verify the name
+                TokenLoginClient.LOGGER.debug("Async username update failed: {}", e.getMessage());
+            }
+        }, "TokenLogin-UsernameUpdate");
+        t.setDaemon(true);
+        t.start();
     }
 
     @Unique
@@ -519,6 +588,22 @@ public abstract class MultiplayerScreenMixin extends Screen {
             case CONFIRMING -> Text.literal("Sure?").styled(s -> s.withColor(0xFFAA00));
             case ON         -> Text.literal("Selfban: ").append(Text.literal("ON").styled(s -> s.withColor(0x55FF55)));
         };
+    }
+
+    // =====================================================================
+    // AntiKick label
+    // =====================================================================
+
+    @Unique
+    private static Text tokenlogin$antikickLabel() {
+        if (AntiKick.isEnabled()) {
+            int blocked = AntiKick.getBlockedCount();
+            String suffix = blocked > 0 ? " (" + blocked + ")" : "";
+            return Text.literal("AntiKick: ")
+                    .append(Text.literal("ON" + suffix).styled(s -> s.withColor(0x55FF55)));
+        }
+        return Text.literal("AntiKick: ")
+                .append(Text.literal("OFF").styled(s -> s.withColor(0xFF5555)));
     }
 
     // =====================================================================

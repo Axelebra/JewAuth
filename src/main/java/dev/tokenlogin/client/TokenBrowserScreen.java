@@ -49,6 +49,9 @@ public class TokenBrowserScreen extends Screen {
     private ButtonWidget myAccountsButton;
     private ButtonWidget backButton;
 
+    // ── Hypixel API key ────────────────────────────────────────────────────
+    private TextFieldWidget apiKeyField;
+
     private String statusText  = "";
     private int    statusColor = 0xFFAAAAAA;
 
@@ -104,7 +107,7 @@ public class TokenBrowserScreen extends Screen {
         this.addDrawableChild(myAccountsButton);
 
         // ── Search field (centered in header) ─────────────────────────────────
-        int searchW = Math.min(200, this.width - 340);
+        int searchW = Math.min(200, this.width - 440);
         int searchX = (this.width - searchW) / 2;
         searchField = new TextFieldWidget(
                 this.textRenderer, searchX, 3, searchW, 16,
@@ -113,6 +116,19 @@ public class TokenBrowserScreen extends Screen {
         searchField.setPlaceholder(Text.literal("Search accounts..."));
         searchField.setChangedListener(this::onSearchChanged);
         this.addDrawableChild(searchField);
+
+        // ── Hypixel API key field (after Back button) ─────────────────────────
+        int apiKeyX = 58;
+        int apiKeyW = searchX - apiKeyX - 6;
+        if (apiKeyW < 60) apiKeyW = 60;
+        apiKeyField = new PasswordFieldWidget(
+                this.textRenderer, apiKeyX, 3, apiKeyW, 16,
+                Text.literal("API Key"));
+        apiKeyField.setMaxLength(128);
+        apiKeyField.setPlaceholder(Text.literal("Hypixel API Key..."));
+        apiKeyField.setText(ProxyConfig.getHypixelApiKey());
+        apiKeyField.setChangedListener(key -> ProxyConfig.setHypixelApiKey(key));
+        this.addDrawableChild(apiKeyField);
 
         // ── Notes field (bottom bar) ──────────────────────────────────────────
         int notesY = this.height - FOOTER_H + 2;
@@ -154,15 +170,27 @@ public class TokenBrowserScreen extends Screen {
 
     private List<AccountEntry> getFilteredAccounts() {
         List<AccountEntry> all = AccountManager.getAccounts();
-        if (searchQuery.isEmpty()) return all;
+        List<AccountEntry> result;
 
-        List<AccountEntry> filtered = new ArrayList<>();
-        for (AccountEntry acc : all) {
-            if (acc.username != null && acc.username.toLowerCase().contains(searchQuery)) {
-                filtered.add(acc);
+        if (searchQuery.isEmpty()) {
+            result = new ArrayList<>(all);
+        } else {
+            result = new ArrayList<>();
+            for (AccountEntry acc : all) {
+                if (acc.username != null && acc.username.toLowerCase().contains(searchQuery)) {
+                    result.add(acc);
+                }
             }
         }
-        return filtered;
+
+        // Sort by highest SB level first, accounts without SB data go to the bottom
+        result.sort((a, b) -> {
+            int lvlA = (a.skyblockInfo != null && a.skyblockInfo.error() == null) ? a.skyblockInfo.skyblockLevel() : -1;
+            int lvlB = (b.skyblockInfo != null && b.skyblockInfo.error() == null) ? b.skyblockInfo.skyblockLevel() : -1;
+            return Integer.compare(lvlB, lvlA);
+        });
+
+        return result;
     }
 
     // ── Notes ─────────────────────────────────────────────────────────────────
@@ -384,6 +412,18 @@ public class TokenBrowserScreen extends Screen {
         if (tx < rx - 4) {
             ctx.drawTextWithShadow(this.textRenderer,
                     Text.literal(refreshString(acc)), tx, lY2, refreshColor(acc));
+            tx += this.textRenderer.getWidth(refreshString(acc)) + 8;
+        }
+
+        // Skyblock info: NW + coop
+        String sbStr = skyblockString(acc);
+        if (!sbStr.isEmpty() && tx < rx - 30) {
+            ctx.drawTextWithShadow(this.textRenderer, Text.literal("|"), tx, lY2, 0xFF444444);
+            tx += this.textRenderer.getWidth("| ") + 2;
+            if (tx < rx - 4) {
+                ctx.drawTextWithShadow(this.textRenderer,
+                        Text.literal(sbStr), tx, lY2, skyblockColor(acc));
+            }
         }
     }
 
@@ -463,9 +503,14 @@ public class TokenBrowserScreen extends Screen {
         acc.refreshState = AccountEntry.RefreshState.REFRESHING;
         acc.refreshError = "";
 
+        // Grab proxy NOW on the UI thread so grouping follows click order
+        ProxyEntry proxy = MicrosoftAuthChain.grabProxy();
+
         Thread t = new Thread(() -> {
+            boolean refreshed = false;
             try {
-                AccountManager.refreshAccount(acc);
+                AccountManager.refreshAccount(acc, proxy);
+                refreshed = true;
                 this.client.execute(() -> {
                     acc.refreshState = AccountEntry.RefreshState.SUCCESS;
                     setStatus("Refreshed: " + acc.username, 0xFF55FF55);
@@ -477,6 +522,16 @@ public class TokenBrowserScreen extends Screen {
                     acc.refreshError = e.getMessage() != null ? e.getMessage() : "Unknown error";
                     setStatus("Refresh failed: " + acc.refreshError, 0xFFFF5555);
                 });
+            }
+
+            // Always fetch skyblock data (only needs UUID + API key, not a valid token)
+            String apiKey = ProxyConfig.getHypixelApiKey();
+            if (!apiKey.isBlank() && acc.uuid != null && !acc.uuid.isBlank()) {
+                acc.skyblockFetching = true;
+                SkyblockFetcher.SkyblockInfo info = SkyblockFetcher.fetch(acc.uuid, apiKey);
+                acc.skyblockInfo = info;
+                acc.skyblockFetching = false;
+                AccountStorage.saveSkyblockInfo(acc);
             }
         }, "TokenLogin-Refresh");
         t.setDaemon(true);
@@ -548,6 +603,23 @@ public class TokenBrowserScreen extends Screen {
             case SUCCESS    -> 0xFF55FF55;
             default -> acc.hasRefreshCapability() ? 0xFF55AAFF : 0xFF555555;
         };
+    }
+
+    private static String skyblockString(AccountEntry acc) {
+        if (acc.skyblockFetching) return "SB: loading...";
+        if (acc.skyblockInfo == null) return "";
+        if (acc.skyblockInfo.error() != null) return "SB: " + truncate(acc.skyblockInfo.error(), 20);
+        String coop = acc.skyblockInfo.isCoop()
+                ? "Coop(" + acc.skyblockInfo.coopMembers() + ")"
+                : "Solo";
+        return "SB Lv" + acc.skyblockInfo.skyblockLevel() + " " + coop;
+    }
+
+    private static int skyblockColor(AccountEntry acc) {
+        if (acc.skyblockFetching) return 0xFFFFAA00;
+        if (acc.skyblockInfo == null) return 0xFF555555;
+        if (acc.skyblockInfo.error() != null) return 0xFFFF5555;
+        return acc.skyblockInfo.isCoop() ? 0xFFFFAA00 : 0xFF55AAFF;
     }
 
     private void setStatus(String msg, int color) {

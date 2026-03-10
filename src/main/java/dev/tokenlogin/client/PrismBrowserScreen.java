@@ -485,9 +485,12 @@ public class PrismBrowserScreen extends Screen {
         acc.refreshState = AccountEntry.RefreshState.REFRESHING;
         acc.refreshError = "";
 
+        // Grab proxy NOW on the UI thread so grouping follows click order
+        ProxyEntry proxy = MicrosoftAuthChain.grabProxy();
+
         Thread t = new Thread(() -> {
             try {
-                AccountManager.refreshAccount(acc);
+                AccountManager.refreshAccount(acc, proxy);
                 this.client.execute(() -> {
                     acc.refreshState = AccountEntry.RefreshState.SUCCESS;
                     setStatus("Refreshed: " + acc.username, 0xFF55FF55);

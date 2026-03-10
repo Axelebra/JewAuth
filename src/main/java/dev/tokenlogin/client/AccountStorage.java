@@ -30,6 +30,9 @@ public class AccountStorage {
     /** deadKey → user-editable notes. */
     private static final Map<String, String> notesMap = new HashMap<>();
 
+    /** deadKey → cached skyblock info. */
+    private static final Map<String, SkyblockFetcher.SkyblockInfo> skyblockCache = new HashMap<>();
+
     public record CachedTokens(
             String minecraftToken,
             String refreshToken,    // may be null for JWT-only accounts
@@ -73,8 +76,16 @@ public class AccountStorage {
         save();
     }
 
+    /** Save skyblock info for an account (including error results like "No SB profiles"). */
+    public static void saveSkyblockInfo(AccountEntry entry) {
+        if (entry.skyblockInfo != null) {
+            skyblockCache.put(entry.deadKey(), entry.skyblockInfo);
+        }
+        save();
+    }
+
     /**
-     * Apply any cached tokens and notes on top of a freshly parsed entry.
+     * Apply any cached tokens, notes, and skyblock info on top of a freshly parsed entry.
      * This makes the cached (fresher) tokens take precedence over the source file.
      */
     public static void applyCache(AccountEntry entry) {
@@ -93,6 +104,9 @@ public class AccountStorage {
 
         String notes = notesMap.get(entry.deadKey());
         if (notes != null) entry.notes = notes;
+
+        SkyblockFetcher.SkyblockInfo sbInfo = skyblockCache.get(entry.deadKey());
+        if (sbInfo != null) entry.skyblockInfo = sbInfo;
     }
 
     // ── Load / Save ───────────────────────────────────────────────────────────
@@ -132,6 +146,22 @@ public class AccountStorage {
                     }
                 }
             }
+
+            skyblockCache.clear();
+            if (root.has("skyblock")) {
+                JsonObject sbObj = root.getAsJsonObject("skyblock");
+                for (Map.Entry<String, JsonElement> e : sbObj.entrySet()) {
+                    if (!e.getValue().isJsonObject()) continue;
+                    JsonObject v = e.getValue().getAsJsonObject();
+                    int level = v.has("level") ? v.get("level").getAsInt() : 0;
+                    boolean coop = v.has("coop") && v.get("coop").getAsBoolean();
+                    int members = v.has("members") ? v.get("members").getAsInt() : 1;
+                    String pName = v.has("profile") ? v.get("profile").getAsString() : "";
+                    String error = v.has("error") ? v.get("error").getAsString() : null;
+                    skyblockCache.put(e.getKey(),
+                            new SkyblockFetcher.SkyblockInfo(level, coop, members, pName, error));
+                }
+            }
         } catch (Exception e) {
             TokenLoginClient.LOGGER.warn("Failed to load account cache: {}", e.getMessage());
         }
@@ -160,6 +190,20 @@ public class AccountStorage {
                 JsonObject notes = new JsonObject();
                 notesMap.forEach(notes::addProperty);
                 root.add("notes", notes);
+            }
+
+            if (!skyblockCache.isEmpty()) {
+                JsonObject sb = new JsonObject();
+                skyblockCache.forEach((key, info) -> {
+                    JsonObject obj = new JsonObject();
+                    obj.addProperty("level", info.skyblockLevel());
+                    obj.addProperty("coop", info.isCoop());
+                    obj.addProperty("members", info.coopMembers());
+                    obj.addProperty("profile", info.profileName());
+                    if (info.error() != null) obj.addProperty("error", info.error());
+                    sb.add(key, obj);
+                });
+                root.add("skyblock", sb);
             }
 
             Files.writeString(CACHE_FILE,

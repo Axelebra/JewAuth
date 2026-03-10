@@ -11,7 +11,9 @@
     "DrawContextMixin",
     "ChatHudMixin",
     "WindowTitleMixin",
-    "PlayerListHudMixin"
+    "PlayerListHudMixin",
+    "AntiKickMixin",
+    "DisconnectedScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

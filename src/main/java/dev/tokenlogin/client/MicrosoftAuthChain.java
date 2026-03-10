@@ -5,6 +5,7 @@ import com.google.gson.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Scanner;
 
 /**
@@ -26,14 +27,55 @@ public class MicrosoftAuthChain {
             long   expiresEpoch       // absolute epoch seconds
     ) {}
 
+    // ── Proxy rotation state (global across all accounts) ──────────────────
+    private static final Object ROTATION_LOCK = new Object();
+    private static int  globalRefreshCount   = 0;
+    private static int  currentProxyIndex    = -1;
+    private static boolean proxyIndexInitialized = false;
+
+    /** The proxy currently being used by post(). Thread-local for concurrent refreshes. */
+    private static final ThreadLocal<ProxyEntry> activeRefreshProxy = new ThreadLocal<>();
+
     /**
      * Runs all 4 steps and returns a new Minecraft JWT.
+     * Routes HTTP calls through the given proxy (assigned at button-press time).
+     * If a proxy fails with a network error, skips to the next proxy and retries.
      *
      * @param refreshToken The Microsoft refresh_token from the launcher file.
      * @param clientId     The OAuth client_id that originally issued the token.
+     * @param proxy        The proxy to use (grabbed via grabProxy() at click time), or null.
      * @throws Exception with a human-readable message on any failure.
      */
-    public static RefreshResult refresh(String refreshToken, String clientId, boolean liveAuth) throws Exception {
+    public static RefreshResult refresh(String refreshToken, String clientId, boolean liveAuth, ProxyEntry proxy) throws Exception {
+        activeRefreshProxy.set(proxy);
+
+        List<ProxyEntry> allProxies = ProxyConfig.getProxies();
+        int maxSkips = allProxies.isEmpty() ? 0 : allProxies.size() - 1;
+        int skips = 0;
+
+        while (true) {
+            try {
+                setupProxyAuth(proxy);
+                RefreshResult result = doRefresh(refreshToken, clientId, liveAuth);
+                return result;
+            } catch (Exception e) {
+                if (isNetworkError(e) && proxy != null && skips < maxSkips) {
+                    TokenLoginClient.LOGGER.warn("Proxy {} failed for refresh, skipping: {}",
+                            proxy.address, e.getMessage());
+                    proxy = skipToNextProxy();
+                    activeRefreshProxy.set(proxy);
+                    skips++;
+                    continue;
+                }
+                throw e;
+            } finally {
+                clearProxyAuth();
+            }
+        }
+    }
+
+    /** The actual auth chain — separated so retry logic stays clean. */
+    private static RefreshResult doRefresh(String refreshToken, String clientId, boolean liveAuth) throws Exception {
         // Step 1
         MSTokenResult ms = refreshMsToken(refreshToken, clientId, liveAuth);
 
@@ -173,6 +215,142 @@ public class MicrosoftAuthChain {
         return new MCAuthResult(response.get("access_token").getAsString(), expiresIn);
     }
 
+    // ── Proxy rotation helpers ────────────────────────────────────────────
+
+    /**
+     * Atomically grabs the next proxy slot. Each call counts toward the
+     * 3-per-proxy limit. Call this from the UI thread at button-press time
+     * so grouping is determined by click order, not background thread scheduling.
+     */
+    public static ProxyEntry grabProxy() {
+        List<ProxyEntry> proxies = ProxyConfig.getProxies();
+        if (proxies.isEmpty()) return null;
+
+        synchronized (ROTATION_LOCK) {
+            // First call: find the active proxy's index
+            if (!proxyIndexInitialized) {
+                proxyIndexInitialized = true;
+                String activeKey = ProxyConfig.getActiveKey();
+                for (int i = 0; i < proxies.size(); i++) {
+                    if (proxies.get(i).key().equals(activeKey)) {
+                        currentProxyIndex = i;
+                        break;
+                    }
+                }
+                if (currentProxyIndex < 0) currentProxyIndex = 0;
+            }
+
+            // Rotate if we've used this proxy 3 times
+            if (globalRefreshCount >= 3) {
+                globalRefreshCount = 0;
+                currentProxyIndex = (currentProxyIndex + 1) % proxies.size();
+                ProxyEntry next = proxies.get(currentProxyIndex);
+                TokenLoginClient.LOGGER.info("Proxy rotated to: {} ({})",
+                        next.name.isEmpty() ? next.address : next.name, next.address);
+            }
+
+            globalRefreshCount++;
+
+            if (currentProxyIndex >= proxies.size()) currentProxyIndex = 0;
+            ProxyEntry proxy = proxies.get(currentProxyIndex);
+            TokenLoginClient.LOGGER.debug("Refresh #{} on proxy: {}", globalRefreshCount, proxy.address);
+            return proxy;
+        }
+    }
+
+    /**
+     * Skips the current proxy (it failed) and moves to the next one.
+     * Resets the refresh counter so the new proxy gets a full 3 uses.
+     */
+    private static ProxyEntry skipToNextProxy() {
+        List<ProxyEntry> proxies = ProxyConfig.getProxies();
+        if (proxies.isEmpty()) return null;
+
+        synchronized (ROTATION_LOCK) {
+            currentProxyIndex = (currentProxyIndex + 1) % proxies.size();
+            globalRefreshCount = 0; // reset for the new proxy
+            ProxyEntry next = proxies.get(currentProxyIndex);
+            TokenLoginClient.LOGGER.info("Proxy skipped (failed), now using: {} ({})",
+                    next.name.isEmpty() ? next.address : next.name, next.address);
+            return next;
+        }
+    }
+
+    /** Converts a ProxyEntry to a java.net.Proxy. */
+    private static Proxy toJavaProxy(ProxyEntry entry) {
+        if (entry == null || entry.address.isBlank()) return null;
+        if (entry.lastType == ProxyManager.ProxyType.NONE) return null;
+
+        try {
+            String[] parts = entry.address.trim().split(":");
+            if (parts.length != 2) return null;
+            String host = parts[0];
+            int port = Integer.parseInt(parts[1]);
+
+            Proxy.Type type = switch (entry.lastType) {
+                case SOCKS5, SOCKS4 -> Proxy.Type.SOCKS;
+                case HTTP           -> Proxy.Type.HTTP;
+                case NONE           -> null;
+            };
+            if (type == null) return null;
+
+            return new Proxy(type, new InetSocketAddress(host, port));
+        } catch (Exception e) {
+            TokenLoginClient.LOGGER.debug("Failed to parse proxy address {}: {}", entry.address, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Sets up authentication for the proxy. Uses ONLY auth properties/Authenticator,
+     * never socksProxyHost/socksProxyPort (those would hijack ALL JVM connections).
+     * Routing is handled by the Proxy object passed to openConnection().
+     */
+    private static void setupProxyAuth(ProxyEntry entry) {
+        if (entry == null || entry.address.isBlank()) return;
+        if (entry.username.isBlank()) return;
+
+        // Set SOCKS auth system properties — Java's SocksSocketImpl reads these
+        if (entry.lastType == ProxyManager.ProxyType.SOCKS5
+                || entry.lastType == ProxyManager.ProxyType.SOCKS4) {
+            System.setProperty("java.net.socks.username", entry.username);
+            System.setProperty("java.net.socks.password", entry.password);
+        }
+
+        // Set Authenticator for both SOCKS and HTTP
+        Authenticator.setDefault(new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(
+                        entry.username, entry.password.toCharArray());
+            }
+        });
+    }
+
+    private static void clearProxyAuth() {
+        System.clearProperty("java.net.socks.username");
+        System.clearProperty("java.net.socks.password");
+        Authenticator.setDefault(null);
+        activeRefreshProxy.remove();
+    }
+
+    /** Returns true if the exception looks like a network/proxy failure rather than an API error. */
+    private static boolean isNetworkError(Exception e) {
+        if (e instanceof java.net.SocketTimeoutException) return true;
+        if (e instanceof java.net.ConnectException) return true;
+        if (e instanceof java.net.SocketException) return true;
+        if (e instanceof java.net.UnknownHostException) return true;
+        // Proxy handshake failures
+        String msg = e.getMessage();
+        if (msg != null) {
+            String lower = msg.toLowerCase();
+            if (lower.contains("connect timed out")) return true;
+            if (lower.contains("connection refused")) return true;
+            if (lower.contains("proxy") || lower.contains("tunnel")) return true;
+        }
+        return false;
+    }
+
     // ── HTTP helpers ──────────────────────────────────────────────────────────
 
     private static JsonObject postJson(String urlStr, String body) throws Exception {
@@ -185,7 +363,13 @@ public class MicrosoftAuthChain {
 
     private static JsonObject post(String urlStr, String body, String contentType) throws Exception {
         URL url = new URL(urlStr);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+        // Route through proxy if one is active for this refresh
+        Proxy javaProxy = toJavaProxy(activeRefreshProxy.get());
+        HttpURLConnection conn = (javaProxy != null)
+                ? (HttpURLConnection) url.openConnection(javaProxy)
+                : (HttpURLConnection) url.openConnection();
+
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", contentType);
         conn.setRequestProperty("Accept", "application/json");
@@ -206,6 +390,14 @@ public class MicrosoftAuthChain {
         if (code >= 400) {
             TokenLoginClient.LOGGER.warn("HTTP {} from {}, body: {}", code, urlStr,
                     response.substring(0, Math.min(500, response.length())));
+
+            if (code == 429) {
+                throw new Exception("Rate limited — try again later");
+            }
+            if (code == 400) {
+                throw new Exception("Invalid microsoft (password changed or token expired)");
+            }
+
             throw new Exception("HTTP " + code + " from " + urlStr + ": " + response.substring(0, Math.min(200, response.length())));
         }
 

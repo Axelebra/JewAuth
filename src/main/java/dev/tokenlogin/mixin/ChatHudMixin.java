@@ -1,6 +1,7 @@
 package dev.tokenlogin.mixin;
 
 import dev.tokenlogin.client.NickHider;
+import dev.tokenlogin.client.SelfBan;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.hud.ChatHud;
@@ -13,10 +14,8 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 /**
  * Intercepts chat messages to replace the player's real name
- * with the fake name when NickHider is enabled.
- *
- * Targets the 3-arg addMessage which is where all messages
- * ultimately get processed (the 1-arg overload delegates here).
+ * with the fake name when NickHider is enabled, and to detect
+ * server transfers for SelfBan.
  */
 @Environment(EnvType.CLIENT)
 @Mixin(ChatHud.class)
@@ -29,6 +28,20 @@ public abstract class ChatHudMixin {
             ordinal = 0
     )
     private Text tokenlogin$replaceChatName(Text message) {
+        // Detect server transfers and errors for SelfBan
+        if (SelfBan.isEnabled()) {
+            String raw = message.getString().toLowerCase();
+            if (raw.contains("sending to server")) {
+                SelfBan.onServerTransferMessage();
+            }
+            if (raw.contains("there was a problem joining skyblock")) {
+                SelfBan.onSkyblockJoinError();
+            }
+            if (raw.contains("couldn't warp you")) {
+                SelfBan.onHubWarpError();
+            }
+        }
+
         if (NickHider.isEnabled()) {
             return NickHider.replaceInText(message);
         }

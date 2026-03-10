@@ -80,15 +80,16 @@ public class AccountManager {
      *
      * Blocking — call from a background thread.
      *
+     * @param proxy The proxy to use (grabbed via MicrosoftAuthChain.grabProxy() on UI thread).
      * @throws Exception with a human-readable message on failure.
      */
-    public static void refreshAccount(AccountEntry entry) throws Exception {
+    public static void refreshAccount(AccountEntry entry, ProxyEntry proxy) throws Exception {
         if (!entry.hasRefreshCapability()) {
             throw new Exception("No refresh token available for this account");
         }
 
         MicrosoftAuthChain.RefreshResult result =
-                MicrosoftAuthChain.refresh(entry.refreshToken, entry.clientId, entry.liveAuth);
+                MicrosoftAuthChain.refresh(entry.refreshToken, entry.clientId, entry.liveAuth, proxy);
 
         // Update entry in-place
         entry.minecraftToken = result.minecraftToken();

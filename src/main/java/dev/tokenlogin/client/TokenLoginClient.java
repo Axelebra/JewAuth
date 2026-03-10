@@ -20,6 +20,7 @@ public class TokenLoginClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             SelfBan.tick();
+            AntiKick.tickReconnect();
             autoConnectProxy();
         });
     }
