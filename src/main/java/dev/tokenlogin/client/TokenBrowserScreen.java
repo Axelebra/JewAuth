@@ -106,6 +106,12 @@ public class TokenBrowserScreen extends Screen {
         ).dimensions(this.width - 218, 3, 78, 16).build();
         this.addDrawableChild(myAccountsButton);
 
+        this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Manual Refresh"),
+                btn -> this.client.setScreen(
+                        new ManualRefreshScreen(this))
+        ).dimensions(this.width - 312, 3, 90, 16).build());
+
         // ── Search field (centered in header) ─────────────────────────────────
         int searchW = Math.min(200, this.width - 440);
         int searchX = (this.width - searchW) / 2;
@@ -170,16 +176,16 @@ public class TokenBrowserScreen extends Screen {
 
     private List<AccountEntry> getFilteredAccounts() {
         List<AccountEntry> all = AccountManager.getAccounts();
-        List<AccountEntry> result;
+        List<AccountEntry> result = new ArrayList<>();
 
-        if (searchQuery.isEmpty()) {
-            result = new ArrayList<>(all);
-        } else {
-            result = new ArrayList<>();
-            for (AccountEntry acc : all) {
-                if (acc.username != null && acc.username.toLowerCase().contains(searchQuery)) {
-                    result.add(acc);
-                }
+        for (AccountEntry acc : all) {
+            // Show only: valid JWT (not expired) OR has refresh capability
+            // Hide:      expired/missing token with no refresh option
+            boolean hasValidJwt = !acc.minecraftToken.isBlank() && !acc.isJwtExpired();
+            if (!hasValidJwt && !acc.hasRefreshCapability()) continue;
+
+            if (searchQuery.isEmpty() || (acc.username != null && acc.username.toLowerCase().contains(searchQuery))) {
+                result.add(acc);
             }
         }
 
@@ -341,8 +347,8 @@ public class TokenBrowserScreen extends Screen {
         int lY2 = y + 15;
 
         // Badge
-        String badge = "[" + acc.sourceType.badge() + "]";
-        int    bc    = acc.sourceType.badgeColor();
+        String badge = "[" + acc.badge() + "]";
+        int    bc    = acc.badgeColor();
         ctx.drawTextWithShadow(this.textRenderer,
                 Text.literal(badge).styled(s -> s.withColor(bc)), x + 2, lY1, bc);
         int bw = this.textRenderer.getWidth(badge) + 4;
@@ -480,11 +486,6 @@ public class TokenBrowserScreen extends Screen {
             selectAccount(acc);
             return;
         }
-    }
-
-    private static boolean hitWidget(ButtonWidget w, double mx, double my) {
-        return mx >= w.getX() && mx < w.getX() + w.getWidth()
-            && my >= w.getY() && my < w.getY() + w.getHeight();
     }
 
     @Override

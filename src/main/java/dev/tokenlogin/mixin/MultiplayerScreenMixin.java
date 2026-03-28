@@ -1,8 +1,9 @@
 package dev.tokenlogin.mixin;
 
 import dev.tokenlogin.client.AccountEntry;
+import dev.tokenlogin.client.AccountManager;
 import dev.tokenlogin.client.AccountStorage;
-import dev.tokenlogin.client.AntiKick;
+import dev.tokenlogin.client.AutoReconnect;
 import dev.tokenlogin.client.NameChanger;
 import dev.tokenlogin.client.NickHider;
 import dev.tokenlogin.client.ProxyConfig;
@@ -18,9 +19,13 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
 import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.network.ServerAddress;
+import net.minecraft.client.network.ServerInfo;
 import net.minecraft.client.session.Session;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
@@ -50,7 +55,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
     @Unique private volatile boolean tokenlogin$loginInProgress = false;
 
-    @Unique private static Session tokenlogin$originalSession = null;
+    @Unique private static Session  tokenlogin$originalSession      = null;
 
     // =====================================================================
     // Proxy widgets (top-right)
@@ -99,17 +104,16 @@ public abstract class MultiplayerScreenMixin extends Screen {
             tokenlogin$originalSession = this.client.getSession();
         }
 
-        // ── Token login row (bottom-left) ────────────────────────────────────
-        // Reduced field width and tighter button spacing to avoid overlapping
-        // the vanilla multiplayer buttons above.
         int h          = 14;
-        int fieldWidth = 120;   // was 160 — shorter field
+        int fieldWidth = 120;
         int loginW     = 44;
         int restoreW   = 50;
         int browseW    = 48;
         int gap        = 2;
-        int x          = 4;
-        int y          = this.height - h - 2;
+
+        // ── Token login row (bottom-left) ────────────────────────────────────
+        int x = 4;
+        int y = this.height - h - 2;
 
         tokenlogin$tokenField = new TextFieldWidget(
                 this.textRenderer, x, y, fieldWidth, h,
@@ -138,13 +142,13 @@ public abstract class MultiplayerScreenMixin extends Screen {
         this.addDrawableChild(tokenlogin$browseButton);
 
         // ── Proxy (top-right) ────────────────────────────────────────────────
-        int addrW       = 120;
-        int btnW        = 56;
+        int addrW        = 120;
+        int btnW         = 56;
         int browseProxyW = 52;
-        int halfW       = (addrW - gap) / 2;
-        int rightX      = this.width - addrW - btnW - gap - browseProxyW - gap - 4;
-        int row1Y       = 2;
-        int row2Y       = row1Y + h + gap;
+        int halfW        = (addrW - gap) / 2;
+        int rightX       = this.width - addrW - btnW - gap - browseProxyW - gap - 4;
+        int row1Y        = 2;
+        int row2Y        = row1Y + h + gap;
 
         tokenlogin$proxyAddressField = new TextFieldWidget(
                 this.textRenderer, rightX, row1Y, addrW, h,
@@ -215,26 +219,72 @@ public abstract class MultiplayerScreenMixin extends Screen {
         ).dimensions(nameX + nameFieldW + gap + nameBtnW + gap, nameY, modeBtnW, h).build();
         this.addDrawableChild(tokenlogin$nameModeButton);
 
-        // ── AntiKick toggle (bottom-right, left of selfban) ──────────────────
+        // ── AntiKick + Selfban (bottom-right) ────────────────────────────────
         int antikickW = 72;
         int selfbanW  = 72;
-        int gap2      = 2;
         int selfbanX  = this.width - selfbanW - 4;
-        int antikickX = selfbanX - antikickW - gap2;
+        int antikickX = selfbanX - antikickW - gap;
         int selfbanY  = this.height - h - 2;
 
         tokenlogin$antikickButton = ButtonWidget.builder(
                 tokenlogin$antikickLabel(),
-                btn -> { AntiKick.toggle(); btn.setMessage(tokenlogin$antikickLabel()); }
+                btn -> { AutoReconnect.toggle(); btn.setMessage(tokenlogin$antikickLabel()); }
         ).dimensions(antikickX, selfbanY, antikickW, h).build();
         this.addDrawableChild(tokenlogin$antikickButton);
 
-        // ── Selfban toggle (bottom-right) ────────────────────────────────────
         tokenlogin$selfbanButton = ButtonWidget.builder(
                 tokenlogin$selfbanLabel(),
                 btn -> tokenlogin$handleSelfbanToggle()
         ).dimensions(selfbanX, selfbanY, selfbanW, h).build();
         this.addDrawableChild(tokenlogin$selfbanButton);
+
+    }
+
+    @Unique private int tokenlogin$lastW = -1;
+    @Unique private int tokenlogin$lastH = -1;
+
+    @Unique
+    private void tokenlogin$repositionWidgets() {
+        if (tokenlogin$tokenField == null) return;
+
+        int h          = 14;
+        int gap        = 2;
+        int fieldWidth = 120;
+        int loginW     = 44;
+        int restoreW   = 50;
+        int browseW    = 48;
+
+        // Bottom-left: token row
+        int x = 4;
+        int y = this.height - h - 2;
+        tokenlogin$tokenField.setPosition(x, y);
+        tokenlogin$loginButton.setPosition(x + fieldWidth + gap, y);
+        tokenlogin$restoreButton.setPosition(x + fieldWidth + gap + loginW + gap, y);
+        tokenlogin$browseButton.setPosition(x + fieldWidth + gap + loginW + gap + restoreW + gap, y);
+
+        // Top-right: proxy rows
+        int addrW        = 120;
+        int btnW         = 56;
+        int browseProxyW = 52;
+        int halfW        = (addrW - gap) / 2;
+        int rightX       = this.width - addrW - btnW - gap - browseProxyW - gap - 4;
+        int row1Y        = 2;
+        int row2Y        = row1Y + h + gap;
+        tokenlogin$proxyAddressField.setPosition(rightX, row1Y);
+        tokenlogin$proxyConnectButton.setPosition(rightX + addrW + gap, row1Y);
+        tokenlogin$proxyBrowseButton.setPosition(rightX + addrW + gap + btnW + gap, row1Y);
+        tokenlogin$proxyUserField.setPosition(rightX, row2Y);
+        tokenlogin$proxyPassField.setPosition(rightX + halfW + gap, row2Y);
+        tokenlogin$proxyDisconnectButton.setPosition(rightX + addrW + gap, row2Y);
+
+        // Bottom-right: antikick + selfban
+        int antikickW = 72;
+        int selfbanW  = 72;
+        int selfbanX  = this.width - selfbanW - 4;
+        int antikickX = selfbanX - antikickW - gap;
+        int selfbanY  = this.height - h - 2;
+        tokenlogin$antikickButton.setPosition(antikickX, selfbanY);
+        tokenlogin$selfbanButton.setPosition(selfbanX, selfbanY);
     }
 
     // =====================================================================
@@ -243,6 +293,15 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+        if (this.width != tokenlogin$lastW || this.height != tokenlogin$lastH) {
+            tokenlogin$lastW = this.width;
+            tokenlogin$lastH = this.height;
+            tokenlogin$repositionWidgets();
+        }
+        // Keep selfban button label in sync — disable() can be called from the tick thread
+        if (tokenlogin$selfbanButton != null) {
+            tokenlogin$selfbanButton.setMessage(tokenlogin$selfbanLabel());
+        }
         super.render(context, mouseX, mouseY, deltaTicks);
         tokenlogin$renderTokenInfo(context);
         tokenlogin$renderProxyStatus(context);
@@ -408,6 +467,26 @@ public abstract class MultiplayerScreenMixin extends Screen {
             // Fire async update — resolves current username/UUID from the API
             // and updates the AccountEntry + session if anything changed
             tokenlogin$asyncUpdateUsername(account);
+
+            // Auto proxy switching: connect to bound proxy or disconnect if none
+            if (account.boundProxyAddress != null && !account.boundProxyAddress.isBlank()) {
+                String addr = account.boundProxyAddress;
+                String user = "";
+                String pass = "";
+                for (ProxyEntry p : ProxyConfig.getProxies()) {
+                    if (p.key().equals(addr.trim().toLowerCase())) {
+                        user = p.username;
+                        pass = p.password;
+                        break;
+                    }
+                }
+                tokenlogin$proxyAddressField.setText(addr);
+                tokenlogin$proxyUserField.setText(user);
+                tokenlogin$proxyPassField.setText(pass);
+                tokenlogin$handleProxyConnect();
+            } else {
+                tokenlogin$handleProxyDisconnect();
+            }
 
         } catch (Exception e) {
             tokenlogin$errorMessage = "Apply failed: " + e.getMessage();
@@ -577,8 +656,22 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
     @Unique
     private void tokenlogin$handleSelfbanToggle() {
-        SelfBan.toggle();
+        SelfBan.State newState = SelfBan.toggle();
         tokenlogin$selfbanButton.setMessage(tokenlogin$selfbanLabel());
+
+        if (newState == SelfBan.State.ON) {
+            // Auto-connect to Hypixel when confirmed
+            ServerInfo server = new ServerInfo("Hypixel", "hypixel.net", ServerInfo.ServerType.OTHER);
+            ServerAddress addr = ServerAddress.parse("hypixel.net");
+            ConnectScreen.connect(
+                    new MultiplayerScreen(new TitleScreen()),
+                    this.client,
+                    addr,
+                    server,
+                    false,
+                    null
+            );
+        }
     }
 
     @Unique
@@ -591,18 +684,16 @@ public abstract class MultiplayerScreenMixin extends Screen {
     }
 
     // =====================================================================
-    // AntiKick label
+    // AutoReconnect label
     // =====================================================================
 
     @Unique
     private static Text tokenlogin$antikickLabel() {
-        if (AntiKick.isEnabled()) {
-            int blocked = AntiKick.getBlockedCount();
-            String suffix = blocked > 0 ? " (" + blocked + ")" : "";
-            return Text.literal("AntiKick: ")
-                    .append(Text.literal("ON" + suffix).styled(s -> s.withColor(0x55FF55)));
+        if (AutoReconnect.isEnabled()) {
+            return Text.literal("AutoRec: ")
+                    .append(Text.literal("ON").styled(s -> s.withColor(0x55FF55)));
         }
-        return Text.literal("AntiKick: ")
+        return Text.literal("AutoRec: ")
                 .append(Text.literal("OFF").styled(s -> s.withColor(0xFF5555)));
     }
 

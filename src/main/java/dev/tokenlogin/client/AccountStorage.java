@@ -33,6 +33,9 @@ public class AccountStorage {
     /** deadKey → cached skyblock info. */
     private static final Map<String, SkyblockFetcher.SkyblockInfo> skyblockCache = new HashMap<>();
 
+    /** deadKey → bound proxy address (null = no binding). */
+    private static final Map<String, String> proxyBindings = new HashMap<>();
+
     public record CachedTokens(
             String minecraftToken,
             String refreshToken,    // may be null for JWT-only accounts
@@ -44,12 +47,12 @@ public class AccountStorage {
     public static Path getBaseDir() { return BASE_DIR; }
 
     public static boolean isDead(AccountEntry entry) {
-        return deadList.contains(entry.deadKey());
+        return deadList.contains(entry.deadKey() + "|" + entry.sourceFile);
     }
 
     /** Add to dead list and persist. */
     public static void markDead(AccountEntry entry) {
-        deadList.add(entry.deadKey());
+        deadList.add(entry.deadKey() + "|" + entry.sourceFile);
         save();
     }
 
@@ -72,6 +75,28 @@ public class AccountStorage {
             notesMap.put(entry.deadKey(), entry.notes);
         } else {
             notesMap.remove(entry.deadKey());
+        }
+        save();
+    }
+
+    /**
+     * Returns the bound proxy address for the given IGN, or null if none.
+     * Searches by username prefix of the deadKey (username|uuid).
+     */
+    public static String getProxyBindingByUsername(String username) {
+        String prefix = username.toLowerCase() + "|";
+        for (Map.Entry<String, String> e : proxyBindings.entrySet()) {
+            if (e.getKey().startsWith(prefix)) return e.getValue();
+        }
+        return null;
+    }
+
+    /** Save the proxy binding for an account. Pass null proxyAddress to clear. */
+    public static void saveProxyBinding(AccountEntry entry) {
+        if (entry.boundProxyAddress != null && !entry.boundProxyAddress.isBlank()) {
+            proxyBindings.put(entry.deadKey(), entry.boundProxyAddress);
+        } else {
+            proxyBindings.remove(entry.deadKey());
         }
         save();
     }
@@ -107,6 +132,8 @@ public class AccountStorage {
 
         SkyblockFetcher.SkyblockInfo sbInfo = skyblockCache.get(entry.deadKey());
         if (sbInfo != null) entry.skyblockInfo = sbInfo;
+
+        entry.boundProxyAddress = proxyBindings.get(entry.deadKey());
     }
 
     // ── Load / Save ───────────────────────────────────────────────────────────
@@ -143,6 +170,16 @@ public class AccountStorage {
                 for (Map.Entry<String, JsonElement> e : notesObj.entrySet()) {
                     if (e.getValue().isJsonPrimitive()) {
                         notesMap.put(e.getKey(), e.getValue().getAsString());
+                    }
+                }
+            }
+
+            proxyBindings.clear();
+            if (root.has("proxybindings")) {
+                JsonObject pb = root.getAsJsonObject("proxybindings");
+                for (Map.Entry<String, JsonElement> e : pb.entrySet()) {
+                    if (e.getValue().isJsonPrimitive()) {
+                        proxyBindings.put(e.getKey(), e.getValue().getAsString());
                     }
                 }
             }
@@ -190,6 +227,12 @@ public class AccountStorage {
                 JsonObject notes = new JsonObject();
                 notesMap.forEach(notes::addProperty);
                 root.add("notes", notes);
+            }
+
+            if (!proxyBindings.isEmpty()) {
+                JsonObject pb = new JsonObject();
+                proxyBindings.forEach(pb::addProperty);
+                root.add("proxybindings", pb);
             }
 
             if (!skyblockCache.isEmpty()) {

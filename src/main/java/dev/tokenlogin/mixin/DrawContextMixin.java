@@ -1,5 +1,6 @@
 package dev.tokenlogin.mixin;
 
+import dev.tokenlogin.client.LobbyAnonymiser;
 import dev.tokenlogin.client.NickHider;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -39,15 +40,16 @@ public abstract class DrawContextMixin {
                                         int x, int y, int color, boolean shadow,
                                         CallbackInfo ci) {
         if (tokenlogin$reentrant.get()) return;
-        if (!NickHider.isEnabled() || text == null) return;
+        if (text == null) return;
 
-        Text replaced = NickHider.replaceInText(text);
-        if (replaced == text) return;                    // nothing changed
+        Text out = NickHider.isEnabled() ? NickHider.replaceInText(text) : text;
+        out = LobbyAnonymiser.replaceInText(out);
+        if (out == text) return;
 
         ci.cancel();
         tokenlogin$reentrant.set(Boolean.TRUE);
         try {
-            ((DrawContext) (Object) this).drawText(textRenderer, replaced, x, y, color, shadow);
+            ((DrawContext) (Object) this).drawText(textRenderer, out, x, y, color, shadow);
         } finally {
             tokenlogin$reentrant.set(Boolean.FALSE);
         }
@@ -63,15 +65,16 @@ public abstract class DrawContextMixin {
                                            int x, int y, int color, boolean shadow,
                                            CallbackInfo ci) {
         if (tokenlogin$reentrant.get()) return;
-        if (!NickHider.isEnabled() || text == null) return;
+        if (text == null) return;
 
-        OrderedText replaced = NickHider.replaceInOrdered(text);
-        if (replaced == text) return;
+        OrderedText out = NickHider.isEnabled() ? NickHider.replaceInOrdered(text) : text;
+        out = LobbyAnonymiser.replaceInOrdered(out);
+        if (out == text) return;
 
         ci.cancel();
         tokenlogin$reentrant.set(Boolean.TRUE);
         try {
-            ((DrawContext) (Object) this).drawText(textRenderer, replaced, x, y, color, shadow);
+            ((DrawContext) (Object) this).drawText(textRenderer, out, x, y, color, shadow);
         } finally {
             tokenlogin$reentrant.set(Boolean.FALSE);
         }
@@ -88,15 +91,16 @@ public abstract class DrawContextMixin {
                                           int x, int y, int color, boolean shadow,
                                           CallbackInfo ci) {
         if (tokenlogin$reentrant.get()) return;
-        if (!NickHider.isEnabled() || text == null) return;
+        if (text == null) return;
 
-        String replaced = NickHider.replaceInString(text);
-        if (replaced.equals(text)) return;
+        String out = NickHider.isEnabled() ? NickHider.replaceInString(text) : text;
+        out = LobbyAnonymiser.replaceInString(out);
+        if (out == null || out.equals(text)) return;
 
         ci.cancel();
         tokenlogin$reentrant.set(Boolean.TRUE);
         try {
-            ((DrawContext) (Object) this).drawText(textRenderer, replaced, x, y, color, shadow);
+            ((DrawContext) (Object) this).drawText(textRenderer, out, x, y, color, shadow);
         } finally {
             tokenlogin$reentrant.set(Boolean.FALSE);
         }

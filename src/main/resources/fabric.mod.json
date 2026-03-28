@@ -4,8 +4,11 @@
   "version": "${version}",
   "name": "JewAuth",
   "description": "Login to Minecraft using a session token instead of Microsoft auth.",
-  "authors": [],
-  "contact": {},
+  "authors": ["Axelebra"],
+  "contact": {
+    "sources": "https://github.com/Axelebra/JewAuth",
+    "discord": "https://discord.gg/jewbz"
+  },
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

@@ -59,11 +59,13 @@ public class AccountManager {
             TokenLoginClient.LOGGER.warn("AccountManager: scan failed: {}", e.getMessage());
         }
 
-        // Deduplicate — same account appearing in multiple files keeps the first copy
+        // Deduplicate — same account in the same file is collapsed, but the same
+        // account appearing in multiple different files shows as separate entries.
         Set<String> seen = new LinkedHashSet<>();
         List<AccountEntry> deduped = new ArrayList<>();
         for (AccountEntry entry : loaded) {
-            if (seen.add(entry.deadKey())) {
+            String key = entry.deadKey() + "|" + entry.sourceFile;
+            if (seen.add(key)) {
                 deduped.add(entry);
             }
         }

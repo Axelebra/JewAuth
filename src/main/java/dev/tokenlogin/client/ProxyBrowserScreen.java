@@ -62,6 +62,9 @@ public class ProxyBrowserScreen extends Screen {
     /** Entry currently being edited in the bottom bar, or null for "add new" mode. */
     private ProxyEntry editingEntry = null;
 
+    /** Entry pending delete confirmation, or null if no confirmation is showing. */
+    private ProxyEntry pendingDelete = null;
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public ProxyBrowserScreen(Screen parent, Consumer<ProxyEntry> onSelect, Consumer<ProxyEntry> onConnectNow) {
@@ -281,6 +284,37 @@ public class ProxyBrowserScreen extends Screen {
                 drawable.render(ctx, mouseX, mouseY, delta);
             }
         }
+
+        // Confirmation dialog
+        if (pendingDelete != null) {
+            renderConfirmDialog(ctx, mouseX, mouseY);
+        }
+    }
+
+    private static final int CONFIRM_W = 220;
+    private static final int CONFIRM_H = 60;
+
+    private void renderConfirmDialog(DrawContext ctx, int mouseX, int mouseY) {
+        ctx.fill(0, 0, this.width, this.height, 0x88000000);
+
+        int cx = (this.width - CONFIRM_W) / 2;
+        int cy = (this.height - CONFIRM_H) / 2;
+
+        ctx.fill(cx - 1, cy - 1, cx + CONFIRM_W + 1, cy + CONFIRM_H + 1, 0xFF888888);
+        ctx.fill(cx, cy, cx + CONFIRM_W, cy + CONFIRM_H, 0xFF1A1A1A);
+
+        String label = pendingDelete.name.isEmpty() ? pendingDelete.address : pendingDelete.name;
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("Delete " + truncate(label, 20) + "?"),
+                this.width / 2, cy + 8, 0xFFFFAAAA);
+
+        int btnW = 60;
+        int btnY = cy + CONFIRM_H - 24;
+        int yesX = cx + CONFIRM_W / 2 - btnW - 4;
+        int noX  = cx + CONFIRM_W / 2 + 4;
+
+        drawBtn(ctx, mouseX, mouseY, yesX, btnY, btnW, BH, "Yes", true);
+        drawBtn(ctx, mouseX, mouseY, noX,  btnY, btnW, BH, "No",  true);
     }
 
     private void renderRow(DrawContext ctx, ProxyEntry entry,
@@ -410,6 +444,24 @@ public class ProxyBrowserScreen extends Screen {
 
     private void tokenlogin$handleClick(double mx, double my, int button) {
         if (button != 0) return;
+
+        // Confirmation dialog intercept
+        if (pendingDelete != null) {
+            int cx = (this.width - CONFIRM_W) / 2;
+            int cy = (this.height - CONFIRM_H) / 2;
+            int btnW = 60;
+            int btnY = cy + CONFIRM_H - 24;
+            int yesX = cx + CONFIRM_W / 2 - btnW - 4;
+            int noX  = cx + CONFIRM_W / 2 + 4;
+
+            if (mx >= yesX && mx < yesX + btnW && my >= btnY && my < btnY + BH) {
+                confirmDelete();
+            }
+            // Any click dismisses the dialog
+            pendingDelete = null;
+            return;
+        }
+
         if (my >= this.height - FOOTER_H) return;  // footer handles its own widgets
 
         if (backButton != null && hitWidget(backButton, mx, my)) {
@@ -477,15 +529,20 @@ public class ProxyBrowserScreen extends Screen {
     }
 
     private void doDelete(ProxyEntry entry) {
-        String label = entry.name.isEmpty() ? entry.address : entry.name;
-        if (editingEntry == entry) {
+        pendingDelete = entry;
+    }
+
+    private void confirmDelete() {
+        if (pendingDelete == null) return;
+        String label = pendingDelete.name.isEmpty() ? pendingDelete.address : pendingDelete.name;
+        if (editingEntry == pendingDelete) {
             editingEntry = null;
             nameField.setText("");
             addressField.setText("");
             userField.setText("");
             passField.setText("");
         }
-        ProxyConfig.removeProxy(entry);
+        ProxyConfig.removeProxy(pendingDelete);
         setStatus(label + " removed. " + ProxyConfig.getProxies().size() + " remaining.", 0xFFAAAAAA);
     }
 

@@ -13,7 +13,10 @@
     "WindowTitleMixin",
     "PlayerListHudMixin",
     "AntiKickMixin",
-    "DisconnectedScreenMixin"
+    "DisconnectedScreenMixin",
+    "TextRendererMixin",
+    "HandledScreenAccessor",
+    "TitleScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

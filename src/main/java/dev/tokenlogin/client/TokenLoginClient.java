@@ -4,6 +4,8 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,43 +22,80 @@ public class TokenLoginClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             SelfBan.tick();
-            AntiKick.tickReconnect();
-            autoConnectProxy();
+            HoverLoot.tick(client);
+            autoConnectProxy(client);
+            clearButtonFocus(client);
         });
     }
 
     /**
-     * Auto-connects to the last active proxy on game startup.
-     * Runs once, on the first tick after the client is ready.
+     * On first tick: read current session IGN, look up its bound proxy in
+     * AccountStorage, fill the proxy fields and connect.
      */
-    private static void autoConnectProxy() {
+    private static void autoConnectProxy(MinecraftClient client) {
         if (proxyAutoConnectAttempted) return;
         proxyAutoConnectAttempted = true;
 
-        // Load config to find the active proxy
         ProxyConfig.load();
-        ProxyEntry active = ProxyConfig.getActiveProxy();
+        AccountStorage.load();
 
-        if (active == null || active.address.isBlank()) {
-            LOGGER.info("No active proxy configured — skipping auto-connect");
+        String ign = client.getSession() != null ? client.getSession().getUsername() : "";
+        if (ign.isEmpty()) return;
+
+        String boundAddr = AccountStorage.getProxyBindingByUsername(ign);
+        if (boundAddr == null || boundAddr.isBlank()) {
+            LOGGER.info("No proxy binding for {} — skipping auto-connect", ign);
             return;
         }
 
-        LOGGER.info("Auto-connecting to proxy: {} ({})", 
-                active.name.isEmpty() ? active.address : active.name, active.address);
+        String user = "";
+        String pass = "";
+        for (ProxyEntry p : ProxyConfig.getProxies()) {
+            if (p.key().equals(boundAddr.trim().toLowerCase())) {
+                user = p.username;
+                pass = p.password;
+                break;
+            }
+        }
+
+        final String fAddr = boundAddr, fUser = user, fPass = pass;
+        LOGGER.info("Auto-connecting bound proxy for {}: {}", ign, fAddr);
 
         Thread t = new Thread(() -> {
-            ProxyManager.ProxyType result = ProxyManager.testAndConnect(
-                    active.address, active.username, active.password);
-
+            ProxyManager.ProxyType result = ProxyManager.testAndConnect(fAddr, fUser, fPass);
             if (result != ProxyManager.ProxyType.NONE) {
-                ProxyConfig.markConnected(active, result);
-                LOGGER.info("Proxy auto-connected via {}: {}", result.displayName(), active.address);
+                String key = fAddr.trim().toLowerCase();
+                ProxyEntry entry = null;
+                for (ProxyEntry p : ProxyConfig.getProxies()) {
+                    if (p.key().equals(key)) { entry = p; break; }
+                }
+                if (entry == null) {
+                    entry = new ProxyEntry();
+                    entry.address  = fAddr;
+                    entry.username = fUser;
+                    entry.password = fPass;
+                    ProxyConfig.addProxy(entry);
+                }
+                ProxyConfig.markConnected(entry, result);
+                LOGGER.info("Bound proxy connected via {}", result.displayName());
             } else {
-                LOGGER.warn("Proxy auto-connect failed for: {}", active.address);
+                LOGGER.warn("Bound proxy failed: {}", fAddr);
             }
         }, "TokenLogin-ProxyAutoConnect");
         t.setDaemon(true);
         t.start();
+    }
+
+    /**
+     * Clears focus from buttons every tick so they don't keep the white
+     * outline after being clicked with the mouse.
+     */
+    private static void clearButtonFocus(MinecraftClient client) {
+        if (client.currentScreen == null) return;
+        if (client.currentScreen.getFocused() instanceof ButtonWidget w && !w.isMouseOver(
+                client.mouse.getX() * client.getWindow().getScaledWidth()  / client.getWindow().getWidth(),
+                client.mouse.getY() * client.getWindow().getScaledHeight() / client.getWindow().getHeight())) {
+            client.currentScreen.setFocused(null);
+        }
     }
 }

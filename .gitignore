@@ -38,3 +38,19 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+
+# claude
+
+CLAUDE.md
+.claude/
+
+# env / secrets
+
+.env
+*.env.local
+secrets.*
+
+# os
+
+Thumbs.db
+desktop.ini
