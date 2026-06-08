@@ -83,11 +83,11 @@ public abstract class MultiplayerScreenMixin extends Screen {
     @Unique private volatile boolean tokenlogin$nameChangeInProgress = false;
 
     // =====================================================================
-    // Selfban + AntiKick toggles (bottom-right)
+    // Selfban + AutoReconnect toggles (bottom-right)
     // =====================================================================
 
     @Unique private ButtonWidget tokenlogin$selfbanButton;
-    @Unique private ButtonWidget tokenlogin$antikickButton;
+    @Unique private ButtonWidget tokenlogin$autoRecButton;
 
     protected MultiplayerScreenMixin(Text title) { super(title); }
 
@@ -219,18 +219,18 @@ public abstract class MultiplayerScreenMixin extends Screen {
         ).dimensions(nameX + nameFieldW + gap + nameBtnW + gap, nameY, modeBtnW, h).build();
         this.addDrawableChild(tokenlogin$nameModeButton);
 
-        // ── AntiKick + Selfban (bottom-right) ────────────────────────────────
-        int antikickW = 72;
-        int selfbanW  = 72;
-        int selfbanX  = this.width - selfbanW - 4;
-        int antikickX = selfbanX - antikickW - gap;
-        int selfbanY  = this.height - h - 2;
+        // ── AutoRec + Selfban (bottom-right) ─────────────────────────────────
+        int autoRecW   = 72;
+        int selfbanW   = 72;
+        int selfbanX   = this.width - selfbanW - 4;
+        int autoRecX   = selfbanX - autoRecW - gap;
+        int selfbanY   = this.height - h - 2;
 
-        tokenlogin$antikickButton = ButtonWidget.builder(
-                tokenlogin$antikickLabel(),
-                btn -> { AutoReconnect.toggle(); btn.setMessage(tokenlogin$antikickLabel()); }
-        ).dimensions(antikickX, selfbanY, antikickW, h).build();
-        this.addDrawableChild(tokenlogin$antikickButton);
+        tokenlogin$autoRecButton = ButtonWidget.builder(
+                tokenlogin$autoRecLabel(),
+                btn -> { AutoReconnect.toggle(); btn.setMessage(tokenlogin$autoRecLabel()); }
+        ).dimensions(autoRecX, selfbanY, autoRecW, h).build();
+        this.addDrawableChild(tokenlogin$autoRecButton);
 
         tokenlogin$selfbanButton = ButtonWidget.builder(
                 tokenlogin$selfbanLabel(),
@@ -277,13 +277,13 @@ public abstract class MultiplayerScreenMixin extends Screen {
         tokenlogin$proxyPassField.setPosition(rightX + halfW + gap, row2Y);
         tokenlogin$proxyDisconnectButton.setPosition(rightX + addrW + gap, row2Y);
 
-        // Bottom-right: antikick + selfban
-        int antikickW = 72;
-        int selfbanW  = 72;
-        int selfbanX  = this.width - selfbanW - 4;
-        int antikickX = selfbanX - antikickW - gap;
-        int selfbanY  = this.height - h - 2;
-        tokenlogin$antikickButton.setPosition(antikickX, selfbanY);
+        // Bottom-right: autorec + selfban (bottom row)
+        int autoRecW   = 72;
+        int selfbanW   = 72;
+        int selfbanX   = this.width - selfbanW - 4;
+        int autoRecX   = selfbanX - autoRecW - gap;
+        int selfbanY   = this.height - h - 2;
+        tokenlogin$autoRecButton.setPosition(autoRecX, selfbanY);
         tokenlogin$selfbanButton.setPosition(selfbanX, selfbanY);
     }
 
@@ -660,17 +660,9 @@ public abstract class MultiplayerScreenMixin extends Screen {
         tokenlogin$selfbanButton.setMessage(tokenlogin$selfbanLabel());
 
         if (newState == SelfBan.State.ON) {
-            // Auto-connect to Hypixel when confirmed
-            ServerInfo server = new ServerInfo("Hypixel", "hypixel.net", ServerInfo.ServerType.OTHER);
-            ServerAddress addr = ServerAddress.parse("hypixel.net");
-            ConnectScreen.connect(
-                    new MultiplayerScreen(new TitleScreen()),
-                    this.client,
-                    addr,
-                    server,
-                    false,
-                    null
-            );
+            // Auto-connect to the SelfBan target when confirmed. SelfBan owns the
+            // connect target/name so the reconnect-until-banned loop stays consistent.
+            SelfBan.connect(new MultiplayerScreen(new TitleScreen()));
         }
     }
 
@@ -688,7 +680,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
     // =====================================================================
 
     @Unique
-    private static Text tokenlogin$antikickLabel() {
+    private static Text tokenlogin$autoRecLabel() {
         if (AutoReconnect.isEnabled()) {
             return Text.literal("AutoRec: ")
                     .append(Text.literal("ON").styled(s -> s.withColor(0x55FF55)));

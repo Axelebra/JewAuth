@@ -7,6 +7,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.screen.DisconnectedScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.network.DisconnectionInfo;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -30,8 +31,13 @@ public abstract class DisconnectedScreenMixin extends Screen {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void tokenlogin$onInit(CallbackInfo ci) {
-        // If SelfBan was running, turn it off
-        if (SelfBan.isEnabled()) SelfBan.disable();
+        // If SelfBan was running, feed it the disconnect reason so it can
+        // reconnect (or stop, if the reason looks like a ban).
+        if (SelfBan.isEnabled()) {
+            DisconnectionInfo info = ((DisconnectedScreenAccessor) this).tokenlogin$getInfo();
+            String reason = (info == null || info.reason() == null) ? "" : info.reason().getString();
+            SelfBan.handleDisconnect(reason);
+        }
 
         if (AutoReconnect.getLastServer() == null) return;
 

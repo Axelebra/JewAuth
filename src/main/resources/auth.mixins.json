@@ -12,10 +12,12 @@
     "ChatHudMixin",
     "WindowTitleMixin",
     "PlayerListHudMixin",
-    "AntiKickMixin",
+    "ServerCaptureMixin",
     "DisconnectedScreenMixin",
+    "DisconnectedScreenAccessor",
     "TextRendererMixin",
     "HandledScreenAccessor",
+    "HandledScreenMixin",
     "TitleScreenMixin"
   ],
   "injectors": {

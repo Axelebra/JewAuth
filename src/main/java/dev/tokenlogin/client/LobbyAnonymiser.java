@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
 
 /**
  * Always-on anonymiser. Replaces Hypixel server/lobby codes and profile IDs
- * with JEWBZ / discord.gg/jewbz across scoreboard, tab list, and chat.
+ * with JWBZ / discord.gg/jwbz across scoreboard, tab list, and chat.
  *
  * Uses lookbehinds wherever possible so only the replaced portion inherits the
  * replacement style — the surrounding text (e.g. "Server: ") keeps its original colour.
@@ -33,17 +33,17 @@ public class LobbyAnonymiser {
         // Scoreboard bottom line: "11/15/24 m19CJ" / "03/22/26 L21F" → fake date + JEW
         new Rule(Pattern.compile("\\d+/\\d+/\\d+\\s+[a-zA-Z]\\w+"), "09/11/2001 JEW"),
         // Tab SERVER widget:   "Server: mini31JD"  → only server name replaced
-        new Rule(Pattern.compile("(?<=Server: )\\S+"), "JEWBZ"),
+        new Rule(Pattern.compile("(?<=Server: )\\S+"), "JWBZ"),
         // Tab PROFILE widget:  "Profile: Banana"   → only profile name replaced
-        new Rule(Pattern.compile("(?<=Profile: )\\S+"), "JEWBZ"),
+        new Rule(Pattern.compile("(?<=Profile: )\\S+"), "JWBZ"),
         // Chat profile UUID:   "Profile ID: 2eafa9..." → only UUID replaced
-        new Rule(Pattern.compile("(?<=Profile ID: )[0-9a-fA-F\\-]{32,36}"), "discord.gg/jewbz"),
+        new Rule(Pattern.compile("(?<=Profile ID: )[0-9a-fA-F\\-]{32,36}"), "discord.gg/jwbz"),
         // Chat profile join:   "You are playing on profile: Banana" → only name replaced
-        new Rule(Pattern.compile("(?<=You are playing on profile: )\\S+"), "JEWBZ"),
+        new Rule(Pattern.compile("(?<=You are playing on profile: )\\S+"), "JWBZ"),
         // Chat server transfer: "Sending to server mini27B..." → only server name replaced
-        new Rule(Pattern.compile("(?<=Sending to server )[^\\s.]+"), "JEWBZ"),
+        new Rule(Pattern.compile("(?<=Sending to server )[^\\s.]+"), "JWBZ"),
         // Chat hub join: "Request join for Hub #1 (mega12D)..." → server name in parens
-        new Rule(Pattern.compile("(?<=\\()(?:mini|mega)\\w+(?=\\))"), "JEWBZ")
+        new Rule(Pattern.compile("(?<=\\()(?:mini|mega)\\w+(?=\\))"), "JWBZ")
     );
 
     // =========================================================================

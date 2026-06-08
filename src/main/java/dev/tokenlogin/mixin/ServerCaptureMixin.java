@@ -12,11 +12,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Captures the current server entry on any disconnect (kick or voluntary),
- * before Minecraft clears the server entry.
+ * before Minecraft clears the server entry, so AutoReconnect knows where to
+ * reconnect.
  */
 @Environment(EnvType.CLIENT)
 @Mixin(net.minecraft.client.network.ClientCommonNetworkHandler.class)
-public abstract class AntiKickMixin {
+public abstract class ServerCaptureMixin {
 
     // Fired when the server sends a disconnect packet (kick)
     @Inject(

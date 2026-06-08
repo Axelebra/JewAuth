@@ -22,7 +22,7 @@ public abstract class TitleScreenMixin {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void tokenlogin$replaceSplash(CallbackInfo ci) {
-        String msg = "discord.gg/jewbz";
+        String msg = "discord.gg/jwbz";
         int blue = 0x0038B8;
         int white = 0xFFFFFF;
         MutableText text = Text.empty();
