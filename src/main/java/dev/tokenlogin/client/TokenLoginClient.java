@@ -4,8 +4,8 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.Button;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,14 +32,14 @@ public class TokenLoginClient implements ClientModInitializer {
      * On first tick: read current session IGN, look up its bound proxy in
      * AccountStorage, fill the proxy fields and connect.
      */
-    private static void autoConnectProxy(MinecraftClient client) {
+    private static void autoConnectProxy(Minecraft client) {
         if (proxyAutoConnectAttempted) return;
         proxyAutoConnectAttempted = true;
 
         ProxyConfig.load();
         AccountStorage.load();
 
-        String ign = client.getSession() != null ? client.getSession().getUsername() : "";
+        String ign = client.getUser() != null ? client.getUser().getName() : "";
         if (ign.isEmpty()) return;
 
         String boundAddr = AccountStorage.getProxyBindingByUsername(ign);
@@ -90,12 +90,12 @@ public class TokenLoginClient implements ClientModInitializer {
      * Clears focus from buttons every tick so they don't keep the white
      * outline after being clicked with the mouse.
      */
-    private static void clearButtonFocus(MinecraftClient client) {
-        if (client.currentScreen == null) return;
-        if (client.currentScreen.getFocused() instanceof ButtonWidget w && !w.isMouseOver(
-                client.mouse.getX() * client.getWindow().getScaledWidth()  / client.getWindow().getWidth(),
-                client.mouse.getY() * client.getWindow().getScaledHeight() / client.getWindow().getHeight())) {
-            client.currentScreen.setFocused(null);
+    private static void clearButtonFocus(Minecraft client) {
+        if (Screens.current(client) == null) return;
+        if (Screens.current(client).getFocused() instanceof Button w && !w.isMouseOver(
+                client.mouseHandler.getScaledXPos(client.getWindow()),
+                client.mouseHandler.getScaledYPos(client.getWindow()))) {
+            Screens.current(client).setFocused(null);
         }
     }
 }

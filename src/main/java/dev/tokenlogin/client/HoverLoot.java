@@ -3,10 +3,10 @@ package dev.tokenlogin.client;
 import dev.tokenlogin.mixin.HandledScreenAccessor;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.inventory.ContainerInput;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -26,13 +26,13 @@ public class HoverLoot {
     private static final Set<Integer>   currentlyQueued = new HashSet<>();
     private static final Queue<Integer> pendingSlots    = new LinkedList<>();
 
-    private static HandledScreen<?> lastScreen = null;
+    private static AbstractContainerScreen<?> lastScreen = null;
     private static double lastMouseX = -1.0;
     private static double lastMouseY = -1.0;
     private static boolean wasActive = false;
 
-    public static void tick(MinecraftClient client) {
-        if (!(client.currentScreen instanceof HandledScreen<?> screen)) {
+    public static void tick(Minecraft client) {
+        if (!(Screens.current(client) instanceof AbstractContainerScreen<?> screen)) {
             if (lastScreen != null) reset();
             return;
         }
@@ -42,17 +42,15 @@ public class HoverLoot {
             lastScreen = screen;
         }
 
-        long window = client.getWindow().getHandle();
+        long window = client.getWindow().handle();
         boolean shiftHeld = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT)  == GLFW.GLFW_PRESS
                          || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
         boolean leftHeld  = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
         boolean active    = shiftHeld && leftHeld;
 
         // Convert raw mouse coords to GUI-scaled coords
-        double scaleX = (double) client.getWindow().getScaledWidth()  / client.getWindow().getWidth();
-        double scaleY = (double) client.getWindow().getScaledHeight() / client.getWindow().getHeight();
-        double mouseX = client.mouse.getX() * scaleX;
-        double mouseY = client.mouse.getY() * scaleY;
+        double mouseX = client.mouseHandler.getScaledXPos(client.getWindow());
+        double mouseY = client.mouseHandler.getScaledYPos(client.getWindow());
 
         // Key released — clear queued set so next drag can re-process slots
         if (!active && wasActive) {
@@ -63,10 +61,10 @@ public class HoverLoot {
 
         if (active) {
             for (Slot slot : getSlotsAlongPath(screen, lastMouseX, lastMouseY, mouseX, mouseY)) {
-                if (slot == null || !slot.hasStack()) continue;
-                if (currentlyQueued.contains(slot.id)) continue;
-                pendingSlots.add(slot.id);
-                currentlyQueued.add(slot.id);
+                if (slot == null || !slot.hasItem()) continue;
+                if (currentlyQueued.contains(slot.index)) continue;
+                pendingSlots.add(slot.index);
+                currentlyQueued.add(slot.index);
             }
         }
 
@@ -76,25 +74,25 @@ public class HoverLoot {
         processQueue(client, screen);
     }
 
-    private static void processQueue(MinecraftClient client, HandledScreen<?> screen) {
+    private static void processQueue(Minecraft client, AbstractContainerScreen<?> screen) {
         if (pendingSlots.isEmpty()) return;
-        if (client.interactionManager == null || client.player == null) return;
+        if (client.gameMode == null || client.player == null) return;
 
-        int syncId = screen.getScreenHandler().syncId;
+        int syncId = screen.getMenu().containerId;
         int processed = 0;
 
         while (!pendingSlots.isEmpty() && processed < 20) {
             int slotId = pendingSlots.poll();
             currentlyQueued.remove(slotId);
             Slot slot = findSlotById(screen, slotId);
-            if (slot != null && slot.hasStack()) {
-                client.interactionManager.clickSlot(syncId, slotId, 0, SlotActionType.QUICK_MOVE, client.player);
+            if (slot != null && slot.hasItem()) {
+                client.gameMode.handleContainerInput(syncId, slotId, 0, ContainerInput.QUICK_MOVE, client.player);
                 processed++;
             }
         }
     }
 
-    private static List<Slot> getSlotsAlongPath(HandledScreen<?> screen,
+    private static List<Slot> getSlotsAlongPath(AbstractContainerScreen<?> screen,
                                                  double fromX, double fromY,
                                                  double toX,   double toY) {
         List<Slot>   slots   = new ArrayList<>();
@@ -114,19 +112,19 @@ public class HoverLoot {
         for (int i = 0; i <= samples; i++) {
             double t = (double) i / samples;
             Slot s = getSlotAt(screen, fromX + dx * t, fromY + dy * t);
-            if (s == null || seen.contains(s.id)) continue;
+            if (s == null || seen.contains(s.index)) continue;
             slots.add(s);
-            seen.add(s.id);
+            seen.add(s.index);
         }
         return slots;
     }
 
-    private static Slot getSlotAt(HandledScreen<?> screen, double x, double y) {
+    private static Slot getSlotAt(AbstractContainerScreen<?> screen, double x, double y) {
         return ((HandledScreenAccessor)(Object) screen).invokeGetSlotAt(x, y);
     }
 
-    private static Slot findSlotById(HandledScreen<?> screen, int slotId) {
-        var slots = screen.getScreenHandler().slots;
+    private static Slot findSlotById(AbstractContainerScreen<?> screen, int slotId) {
+        var slots = screen.getMenu().slots;
         if (slotId >= 0 && slotId < slots.size()) return slots.get(slotId);
         return null;
     }

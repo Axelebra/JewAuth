@@ -2,11 +2,11 @@ package dev.tokenlogin.client;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.text.CharacterVisitor;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
+import net.minecraft.util.FormattedCharSink;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -57,10 +57,10 @@ public class LobbyAnonymiser {
     }
 
     /**
-     * Text component path (chat, etc.).
+     * Component path (chat, etc.).
      * Preserves per-character styles by walking the text via its styled visitor.
      */
-    public static Text replaceInText(Text input) {
+    public static Component replaceInText(Component input) {
         if (input == null) return null;
 
         List<Style> charStyles = new ArrayList<>();
@@ -83,10 +83,10 @@ public class LobbyAnonymiser {
     }
 
     /**
-     * OrderedText path (scoreboard sidebar, tab list widget lines).
-     * Preserves per-character styles via the CharacterVisitor.
+     * FormattedCharSequence path (scoreboard sidebar, tab list widget lines).
+     * Preserves per-character styles via the FormattedCharSink.
      */
-    public static OrderedText replaceInOrdered(OrderedText input) {
+    public static FormattedCharSequence replaceInOrdered(FormattedCharSequence input) {
         if (input == null) return input;
 
         List<Style> styles = new ArrayList<>();
@@ -141,12 +141,12 @@ public class LobbyAnonymiser {
     }
 
     /**
-     * Builds a new Text component from the replacement plan.
+     * Builds a new Component from the replacement plan.
      * Characters kept from the original carry their original style.
      * Replacement characters inherit the style of the first matched character.
      * Consecutive same-style characters are grouped into one literal node.
      */
-    private static Text buildText(String original, List<Style> charStyles, List<Segment> segments) {
+    private static Component buildText(String original, List<Style> charStyles, List<Segment> segments) {
         StringBuilder newStr = new StringBuilder();
         List<Style> newStyles = new ArrayList<>();
         int pos = 0;
@@ -175,32 +175,32 @@ public class LobbyAnonymiser {
         }
 
         String result = newStr.toString();
-        if (result.isEmpty()) return Text.empty();
+        if (result.isEmpty()) return Component.empty();
 
         // Group consecutive same-style characters into styled literal nodes
-        MutableText out = Text.empty();
+        MutableComponent out = Component.empty();
         Style currentStyle = newStyles.get(0);
         StringBuilder group = new StringBuilder();
         for (int i = 0; i < result.length(); i++) {
             Style s = i < newStyles.size() ? newStyles.get(i) : Style.EMPTY;
             if (!s.equals(currentStyle)) {
-                out.append(Text.literal(group.toString()).setStyle(currentStyle));
+                out.append(Component.literal(group.toString()).setStyle(currentStyle));
                 group = new StringBuilder();
                 currentStyle = s;
             }
             group.append(result.charAt(i));
         }
         if (!group.isEmpty()) {
-            out.append(Text.literal(group.toString()).setStyle(currentStyle));
+            out.append(Component.literal(group.toString()).setStyle(currentStyle));
         }
         return out;
     }
 
     /**
-     * Builds a new OrderedText from the replacement plan.
+     * Builds a new FormattedCharSequence from the replacement plan.
      * Same style-preservation logic as buildText but for the render-ready path.
      */
-    private static OrderedText buildOrderedText(String original, List<Style> styles, List<Segment> segments) {
+    private static FormattedCharSequence buildOrderedText(String original, List<Style> styles, List<Segment> segments) {
         StringBuilder newStr = new StringBuilder();
         List<Style> newStyles = new ArrayList<>();
         int pos = 0;
@@ -228,7 +228,7 @@ public class LobbyAnonymiser {
         }
 
         String result = newStr.toString();
-        return (CharacterVisitor visitor) -> {
+        return (FormattedCharSink visitor) -> {
             int charIdx = 0;
             for (int i = 0; i < result.length(); ) {
                 int cp = result.codePointAt(i);

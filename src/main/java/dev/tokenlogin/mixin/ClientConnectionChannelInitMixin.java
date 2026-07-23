@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Targets the anonymous ChannelInitializer inside ClientConnection.connect().
+ * Targets the anonymous ChannelInitializer inside Connection.connect().
  *
  * We inject at TAIL of initChannel — Minecraft's handlers are already in the
  * pipeline, then we prepend the proxy handler so it intercepts the connect event.
@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * initChannel override into the target, destroying the real pipeline setup.
  */
 @Environment(EnvType.CLIENT)
-@Mixin(targets = "net.minecraft.network.ClientConnection$1")
+@Mixin(targets = "net.minecraft.network.Connection$1")
 public abstract class ClientConnectionChannelInitMixin {
 
     @Inject(method = "initChannel(Lio/netty/channel/Channel;)V", at = @At("TAIL"))

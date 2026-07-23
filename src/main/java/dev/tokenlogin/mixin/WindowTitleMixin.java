@@ -1,6 +1,6 @@
 package dev.tokenlogin.mixin;
 
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWImage;
 import org.lwjgl.stb.STBImage;
@@ -15,15 +15,15 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
-@Mixin(MinecraftClient.class)
+@Mixin(Minecraft.class)
 public class WindowTitleMixin {
 
     @Unique
     private static boolean iconSet = false;
 
-    @Inject(method = "updateWindowTitle", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "updateTitle", at = @At("HEAD"), cancellable = true)
     private void overrideWindowTitle(CallbackInfo ci) {
-        long windowHandle = MinecraftClient.getInstance().getWindow().getHandle();
+        long windowHandle = Minecraft.getInstance().getWindow().handle();
         GLFW.glfwSetWindowTitle(windowHandle, "JewAuth");
 
         if (!iconSet) {

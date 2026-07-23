@@ -2,44 +2,45 @@ package dev.tokenlogin.client;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerAbilities;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.BrandCustomPayload;
-import net.minecraft.network.packet.Packet;
-import net.minecraft.network.packet.c2s.common.CustomPayloadC2SPacket;
-import net.minecraft.network.packet.c2s.play.BoatPaddleStateC2SPacket;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.network.packet.c2s.play.CreativeInventoryActionC2SPacket;
-import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
-import net.minecraft.network.packet.c2s.play.PickItemFromEntityC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.network.packet.c2s.play.UpdatePlayerAbilitiesC2SPacket;
-import net.minecraft.network.packet.c2s.play.VehicleMoveC2SPacket;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Abilities;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.network.protocol.common.custom.BrandPayload;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
+import net.minecraft.network.protocol.game.ServerboundPaddleBoatPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundSetCreativeModeSlotPacket;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundPickItemFromEntityPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.network.protocol.game.ServerboundInteractPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerAbilitiesPacket;
+import net.minecraft.network.protocol.game.ServerboundMoveVehiclePacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Random;
 
 /**
  * Selfban — toggle + profile-based packet blaster.
  *
- * Ported from the standalone "hypickle selfban" mod (Mojang/MC 26.1.2) and
- * translated to Yarn / MC 1.21.11.
+ * Ported from the standalone "hypickle selfban" mod and translated to Mojang
+ * mappings / MC 26.x.
  *
  * Button flow: OFF → press → "Sure?" → press → ON (auto-connects to Hypixel).
  * When ON + in-game:
@@ -139,11 +140,11 @@ public final class SelfBan {
         resetRuntime();
         enabledAt = System.currentTimeMillis();
 
-        ServerInfo server = new ServerInfo(TARGET_SERVER_NAME, TARGET_SERVER_ADDRESS, ServerInfo.ServerType.OTHER);
-        ConnectScreen.connect(
+        ServerData server = new ServerData(TARGET_SERVER_NAME, TARGET_SERVER_ADDRESS, ServerData.Type.OTHER);
+        ConnectScreen.startConnecting(
                 parent,
-                MinecraftClient.getInstance(),
-                ServerAddress.parse(TARGET_SERVER_ADDRESS),
+                Minecraft.getInstance(),
+                ServerAddress.parseString(TARGET_SERVER_ADDRESS),
                 server,
                 false,
                 null);
@@ -205,13 +206,13 @@ public final class SelfBan {
             return;
         }
 
-        MinecraftClient minecraft = MinecraftClient.getInstance();
-        ClientPlayNetworkHandler connection = minecraft.getNetworkHandler();
-        ClientPlayerEntity player = minecraft.player;
+        Minecraft minecraft = Minecraft.getInstance();
+        ClientPacketListener connection = minecraft.getConnection();
+        LocalPlayer player = minecraft.player;
         if (connection == null || player == null) {
             if (reconnectAt > 0L && System.currentTimeMillis() >= reconnectAt) {
                 reconnectAt = 0L;
-                connect(minecraft.currentScreen);
+                connect(Screens.current(minecraft));
             }
             return;
         }
@@ -281,7 +282,7 @@ public final class SelfBan {
         return Math.min(remainingThisSecond, perTickCap);
     }
 
-    private static int runProfile(Profile profile, MinecraftClient minecraft, ClientPlayNetworkHandler connection, ClientPlayerEntity player, int budget) {
+    private static int runProfile(Profile profile, Minecraft minecraft, ClientPacketListener connection, LocalPlayer player, int budget) {
         int before = packetsSentThisWindow;
 
         switch (profile) {
@@ -301,130 +302,130 @@ public final class SelfBan {
         return sent == 0 ? budget : sent;
     }
 
-    private static void sendPreBlastCommand(ClientPlayNetworkHandler connection) {
+    private static void sendPreBlastCommand(ClientPacketListener connection) {
         String command = PRE_BLAST_COMMAND.trim();
         if (command.startsWith("/")) {
             command = command.substring(1);
         }
         if (!command.isEmpty()) {
             TokenLoginClient.LOGGER.info("SelfBan: sending pre-blast command /{}", command);
-            connection.sendChatCommand(command);
+            connection.sendCommand(command);
         }
     }
 
     // ── Profiles ─────────────────────────────────────────────────────────────
 
-    private static void openInventory(MinecraftClient minecraft, ClientPlayerEntity player) {
-        if (!(minecraft.currentScreen instanceof InventoryScreen)) {
-            minecraft.setScreen(new InventoryScreen(player));
+    private static void openInventory(Minecraft minecraft, LocalPlayer player) {
+        if (!(Screens.current(minecraft) instanceof InventoryScreen)) {
+            minecraft.setScreenAndShow(new InventoryScreen(player));
         }
     }
 
-    private static void sendClientBrand(ClientPlayNetworkHandler connection, int budget) {
+    private static void sendClientBrand(ClientPacketListener connection, int budget) {
         if (budget <= 0 || CLIENT_BRANDS.length == 0) {
             return;
         }
 
         String brand = CLIENT_BRANDS[brandIndex++ % CLIENT_BRANDS.length].trim();
         if (!brand.isEmpty()) {
-            send(connection, new CustomPayloadC2SPacket(new BrandCustomPayload(brand)));
+            send(connection, new ServerboundCustomPayloadPacket(new BrandPayload(brand)));
         }
     }
 
-    private static void sendCreativeOnlyPackets(ClientPlayNetworkHandler connection, int budget) {
-        // NOTE: the original also sent ServerboundChangeGameModePacket — no client→server
-        // gamemode packet exists in 1.21.11, so only the creative-slot anomalies remain.
+    private static void sendCreativeOnlyPackets(ClientPacketListener connection, int budget) {
+        // NOTE: the original also sent a gamemode packet — no client→server
+        // gamemode packet exists, so only the creative-slot anomalies remain.
         if (budget-- > 0) {
-            send(connection, new CreativeInventoryActionC2SPacket(36, new ItemStack(Items.DIAMOND_SWORD, 64)));
+            send(connection, new ServerboundSetCreativeModeSlotPacket(36, new ItemStack(Items.DIAMOND_SWORD, 64)));
         }
         if (budget > 0) {
-            send(connection, new CreativeInventoryActionC2SPacket(37, new ItemStack(Items.DIAMOND_PICKAXE, 64)));
+            send(connection, new ServerboundSetCreativeModeSlotPacket(37, new ItemStack(Items.DIAMOND_PICKAXE, 64)));
         }
     }
 
-    private static void sendFlightPackets(ClientPlayNetworkHandler connection, ClientPlayerEntity player, int budget) {
+    private static void sendFlightPackets(ClientPacketListener connection, LocalPlayer player, int budget) {
         if (budget-- > 0) {
-            PlayerAbilities abilities = new PlayerAbilities();
-            abilities.unpack(player.getAbilities().pack());
+            Abilities abilities = new Abilities();
+            abilities.apply(player.getAbilities().pack());
             abilities.flying = true;
-            abilities.allowFlying = true;
-            abilities.setFlySpeed(3.0F);
-            send(connection, new UpdatePlayerAbilitiesC2SPacket(abilities));
+            abilities.mayfly = true;
+            abilities.setFlyingSpeed(3.0F);
+            send(connection, new ServerboundPlayerAbilitiesPacket(abilities));
         }
         if (budget-- > 0) {
-            send(connection, new ClientCommandC2SPacket(player, ClientCommandC2SPacket.Mode.START_FALL_FLYING, 0));
+            send(connection, new ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING, 0));
         }
         if (budget > 0) {
-            send(connection, new PlayerMoveC2SPacket.Full(
-                    player.getX(), player.getY() + 9.5, player.getZ(), player.getYaw(), player.getPitch(), false, player.horizontalCollision));
+            send(connection, new ServerboundMovePlayerPacket.PosRot(
+                    player.getX(), player.getY() + 9.5, player.getZ(), player.getYRot(), player.getXRot(), false, player.horizontalCollision));
         }
     }
 
-    private static void sendMovementAnomalies(ClientPlayNetworkHandler connection, ClientPlayerEntity player, int budget) {
+    private static void sendMovementAnomalies(ClientPacketListener connection, LocalPlayer player, int budget) {
         double x = player.getX();
         double y = player.getY();
         double z = player.getZ();
-        float yaw = player.getYaw();
-        float pitch = player.getPitch();
+        float yaw = player.getYRot();
+        float pitch = player.getXRot();
         boolean collision = player.horizontalCollision;
 
-        if (budget-- > 0) send(connection, new PlayerMoveC2SPacket.Full(x, y + 6.0, z, yaw, pitch, false, collision));
-        if (budget-- > 0) send(connection, new PlayerMoveC2SPacket.Full(x + 8.0, y + 12.0, z, yaw, pitch, false, collision));
-        if (budget-- > 0) send(connection, new PlayerMoveC2SPacket.Full(x - 8.0, y - 4.0, z, yaw, pitch, true, collision));
-        if (budget > 0) send(connection, new PlayerMoveC2SPacket.Full(x + 30.0, y, z + 30.0, yaw, pitch, false, collision));
+        if (budget-- > 0) send(connection, new ServerboundMovePlayerPacket.PosRot(x, y + 6.0, z, yaw, pitch, false, collision));
+        if (budget-- > 0) send(connection, new ServerboundMovePlayerPacket.PosRot(x + 8.0, y + 12.0, z, yaw, pitch, false, collision));
+        if (budget-- > 0) send(connection, new ServerboundMovePlayerPacket.PosRot(x - 8.0, y - 4.0, z, yaw, pitch, true, collision));
+        if (budget > 0) send(connection, new ServerboundMovePlayerPacket.PosRot(x + 30.0, y, z + 30.0, yaw, pitch, false, collision));
     }
 
-    private static void sendRotationAnomalies(ClientPlayNetworkHandler connection, ClientPlayerEntity player, int budget) {
+    private static void sendRotationAnomalies(ClientPacketListener connection, LocalPlayer player, int budget) {
         boolean collision = player.horizontalCollision;
-        float baseYaw = player.getYaw();
+        float baseYaw = player.getYRot();
 
-        if (budget-- > 0) send(connection, new PlayerMoveC2SPacket.LookAndOnGround(baseYaw + 720.0F, -90.0F, false, collision));
-        if (budget-- > 0) send(connection, new PlayerMoveC2SPacket.LookAndOnGround(baseYaw - 720.0F, 90.0F, false, collision));
-        if (budget > 0) send(connection, new PlayerMoveC2SPacket.LookAndOnGround(RANDOM.nextFloat() * 360.0F - 180.0F, RANDOM.nextBoolean() ? -90.0F : 90.0F, false, collision));
+        if (budget-- > 0) send(connection, new ServerboundMovePlayerPacket.Rot(baseYaw + 720.0F, -90.0F, false, collision));
+        if (budget-- > 0) send(connection, new ServerboundMovePlayerPacket.Rot(baseYaw - 720.0F, 90.0F, false, collision));
+        if (budget > 0) send(connection, new ServerboundMovePlayerPacket.Rot(RANDOM.nextFloat() * 360.0F - 180.0F, RANDOM.nextBoolean() ? -90.0F : 90.0F, false, collision));
     }
 
-    private static void sendCombatReach(MinecraftClient minecraft, ClientPlayNetworkHandler connection, ClientPlayerEntity player, int budget) {
-        if (minecraft.world == null) {
+    private static void sendCombatReach(Minecraft minecraft, ClientPacketListener connection, LocalPlayer player, int budget) {
+        if (minecraft.level == null) {
             return;
         }
 
-        for (Entity entity : minecraft.world.getEntities()) {
+        for (Entity entity : minecraft.level.entitiesForRendering()) {
             if (budget <= 0) {
                 return;
             }
-            if (entity == player || player.squaredDistanceTo(entity) > 10000.0) {
+            if (entity == player || player.distanceToSqr(entity) > 10000.0) {
                 continue;
             }
 
             if (budget-- > 0) {
-                send(connection, PlayerInteractEntityC2SPacket.attack(entity, player.isSneaking()));
+                send(connection, new ServerboundAttackPacket(entity.getId()));
             }
             if (budget-- > 0) {
-                send(connection, PlayerInteractEntityC2SPacket.interact(entity, player.isSneaking(), Hand.MAIN_HAND));
+                send(connection, new ServerboundInteractPacket(entity.getId(), InteractionHand.MAIN_HAND, entity.position(), player.isShiftKeyDown()));
             }
             if (budget-- > 0) {
-                send(connection, new HandSwingC2SPacket(Hand.MAIN_HAND));
+                send(connection, new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
             }
         }
     }
 
-    private static void sendFastActions(ClientPlayNetworkHandler connection, ClientPlayerEntity player, int budget) {
-        BlockPos farPos = player.getBlockPos().add(12, 6, 12);
-        if (budget-- > 0) send(connection, new HandSwingC2SPacket(Hand.MAIN_HAND));
-        if (budget-- > 0) send(connection, new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, farPos, Direction.UP, sequence++));
-        if (budget-- > 0) send(connection, new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, farPos, Direction.UP, sequence++));
-        if (budget-- > 0) send(connection, new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN, sequence++));
-        if (budget > 0) send(connection, new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, sequence++, player.getYaw() + 720.0F, -90.0F));
+    private static void sendFastActions(ClientPacketListener connection, LocalPlayer player, int budget) {
+        BlockPos farPos = player.blockPosition().offset(12, 6, 12);
+        if (budget-- > 0) send(connection, new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        if (budget-- > 0) send(connection, new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, farPos, Direction.UP, sequence++));
+        if (budget-- > 0) send(connection, new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, farPos, Direction.UP, sequence++));
+        if (budget-- > 0) send(connection, new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN, sequence++));
+        if (budget > 0) send(connection, new ServerboundUseItemPacket(InteractionHand.MAIN_HAND, sequence++, player.getYRot() + 720.0F, -90.0F));
     }
 
-    private static void sendEntityPickPackets(MinecraftClient minecraft, ClientPlayNetworkHandler connection, ClientPlayerEntity player, int budget) {
-        // NOTE: the original also sent ServerboundSpectateEntityPacket — 1.21.11 has no
-        // spectate-by-entity-id C2S packet, so only the pick anomaly remains.
-        if (minecraft.world == null) {
+    private static void sendEntityPickPackets(Minecraft minecraft, ClientPacketListener connection, LocalPlayer player, int budget) {
+        // NOTE: the original also sent a spectate packet — no spectate-by-entity-id
+        // C2S packet exists, so only the pick anomaly remains.
+        if (minecraft.level == null) {
             return;
         }
 
-        for (Entity entity : minecraft.world.getEntities()) {
+        for (Entity entity : minecraft.level.entitiesForRendering()) {
             if (budget <= 0) {
                 return;
             }
@@ -432,18 +433,18 @@ public final class SelfBan {
                 continue;
             }
 
-            if (budget-- > 0) send(connection, new PickItemFromEntityC2SPacket(entity.getId(), true));
+            if (budget-- > 0) send(connection, new ServerboundPickItemFromEntityPacket(entity.getId(), true));
         }
     }
 
-    private static void sendVehicleAnomalies(ClientPlayNetworkHandler connection, ClientPlayerEntity player, int budget) {
-        Vec3d position = new Vec3d(player.getX() + 20.0, player.getY() + 8.0, player.getZ() - 20.0);
-        if (budget-- > 0) send(connection, new VehicleMoveC2SPacket(position, player.getYaw() + 360.0F, -90.0F, false));
-        if (budget > 0) send(connection, new BoatPaddleStateC2SPacket(true, true));
+    private static void sendVehicleAnomalies(ClientPacketListener connection, LocalPlayer player, int budget) {
+        Vec3 position = new Vec3(player.getX() + 20.0, player.getY() + 8.0, player.getZ() - 20.0);
+        if (budget-- > 0) send(connection, new ServerboundMoveVehiclePacket(position, player.getYRot() + 360.0F, -90.0F, false));
+        if (budget > 0) send(connection, new ServerboundPaddleBoatPacket(true, true));
     }
 
-    private static void send(ClientPlayNetworkHandler connection, Packet<?> packet) {
-        connection.sendPacket(packet);
+    private static void send(ClientPacketListener connection, Packet<?> packet) {
+        connection.send(packet);
         packetsSentThisWindow++;
     }
 }

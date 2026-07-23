@@ -1,8 +1,8 @@
-# JewAuth v1.3
+# JewAuth v1.5
 
-A client-side Fabric mod for Minecraft 1.21.11.
+A client-side Fabric mod for **Minecraft 26.2**.
 
-[Discord](https://discord.gg/jewbz)
+[Discord](https://discord.gg/jwbz)
 
 ---
 
@@ -36,11 +36,21 @@ A client-side Fabric mod for Minecraft 1.21.11.
 
 ## Installation
 
-> Requires Java 21 or later.
+> Requires **Java 25** or later.
 
-1. Install [Fabric Loader](https://fabricmc.net/) for Minecraft 1.21.11
+1. Install [Fabric Loader](https://fabricmc.net/) **0.19.3+** for Minecraft 26.2
 2. Install [Fabric API](https://modrinth.com/mod/fabric-api)
 3. Place the mod `.jar` in your `.minecraft/mods/` directory
+
+## Building
+
+```sh
+./gradlew build
+```
+
+The finished jar lands in `build/libs/JewAuth-<version>-<mc-version>.jar`.
+
+Java 25 is required to build — point `JAVA_HOME` at a JDK 25 install if it isn't your default.
 
 ## Configuration
 

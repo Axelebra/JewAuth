@@ -1,9 +1,9 @@
 package dev.tokenlogin.mixin;
 
-import net.minecraft.client.gui.screen.SplashTextRenderer;
-import net.minecraft.client.gui.screen.TitleScreen;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.components.SplashRenderer;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -18,19 +18,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = TitleScreen.class, priority = 2000)
 public abstract class TitleScreenMixin {
 
-    @Shadow @Nullable private SplashTextRenderer splashText;
+    @Shadow @Nullable private SplashRenderer splash;
 
     @Inject(method = "init", at = @At("TAIL"))
     private void tokenlogin$replaceSplash(CallbackInfo ci) {
         String msg = "discord.gg/jwbz";
         int blue = 0x0038B8;
         int white = 0xFFFFFF;
-        MutableText text = Text.empty();
+        MutableComponent text = Component.empty();
         for (int i = 0; i < msg.length(); i++) {
             int color = (i % 2 == 0) ? blue : white;
             int c = color;
-            text.append(Text.literal(String.valueOf(msg.charAt(i))).styled(s -> s.withColor(c)));
+            text.append(Component.literal(String.valueOf(msg.charAt(i))).withStyle(s -> s.withColor(c)));
         }
-        this.splashText = new SplashTextRenderer(text);
+        this.splash = new SplashRenderer(text);
     }
 }

@@ -1,15 +1,13 @@
 package dev.tokenlogin.client;
 
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
-import net.minecraft.util.Util;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,13 +42,13 @@ public class TokenBrowserScreen extends Screen {
     private final Consumer<String>       onPaste;
     private final Consumer<AccountEntry> onLoginNow;
 
-    private ButtonWidget reloadButton;
-    private ButtonWidget openFolderButton;
-    private ButtonWidget myAccountsButton;
-    private ButtonWidget backButton;
+    private Button reloadButton;
+    private Button openFolderButton;
+    private Button myAccountsButton;
+    private Button backButton;
 
     // ── Hypixel API key ────────────────────────────────────────────────────
-    private TextFieldWidget apiKeyField;
+    private EditBox apiKeyField;
 
     private String statusText  = "";
     private int    statusColor = 0xFFAAAAAA;
@@ -59,10 +57,10 @@ public class TokenBrowserScreen extends Screen {
     private boolean initialLoadDone = false;
 
     private AccountEntry     selectedAccount = null;
-    private TextFieldWidget  notesField;
+    private EditBox  notesField;
 
     // ── Search ────────────────────────────────────────────────────────────────
-    private TextFieldWidget searchField;
+    private EditBox searchField;
     private String          searchQuery = "";
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -71,7 +69,7 @@ public class TokenBrowserScreen extends Screen {
             Screen parent,
             Consumer<String> onPaste,
             Consumer<AccountEntry> onLoginNow) {
-        super(Text.literal("Token Browser"));
+        super(Component.literal("Token Browser"));
         this.parent     = parent;
         this.onPaste    = onPaste;
         this.onLoginNow = onLoginNow;
@@ -81,72 +79,72 @@ public class TokenBrowserScreen extends Screen {
 
     @Override
     protected void init() {
-        backButton = ButtonWidget.builder(
-                Text.literal("< Back"),
-                btn -> this.client.setScreen(parent)
-        ).dimensions(4, 3, 50, 16).build();
-        this.addDrawableChild(backButton);
+        backButton = Button.builder(
+                Component.literal("< Back"),
+                btn -> this.minecraft.setScreenAndShow(parent)
+        ).bounds(4, 3, 50, 16).build();
+        this.addRenderableWidget(backButton);
 
         // Header buttons (right side): My Accounts | Open Folder | Reload
-        reloadButton = ButtonWidget.builder(
-                Text.literal("Reload"),
+        reloadButton = Button.builder(
+                Component.literal("Reload"),
                 btn -> triggerReload(false)
-        ).dimensions(this.width - 58, 3, 54, 16).build();
-        this.addDrawableChild(reloadButton);
+        ).bounds(this.width - 58, 3, 54, 16).build();
+        this.addRenderableWidget(reloadButton);
 
-        openFolderButton = ButtonWidget.builder(
-                Text.literal("Open Folder"),
+        openFolderButton = Button.builder(
+                Component.literal("Open Folder"),
                 btn -> openConfigFolder()
-        ).dimensions(this.width - 136, 3, 74, 16).build();
-        this.addDrawableChild(openFolderButton);
+        ).bounds(this.width - 136, 3, 74, 16).build();
+        this.addRenderableWidget(openFolderButton);
 
-        myAccountsButton = ButtonWidget.builder(
-                Text.literal("My Accounts"),
-                btn -> this.client.setScreen(new PrismBrowserScreen(this, this.parent, onLoginNow))
-        ).dimensions(this.width - 218, 3, 78, 16).build();
-        this.addDrawableChild(myAccountsButton);
+        myAccountsButton = Button.builder(
+                Component.literal("My Accounts"),
+                btn -> this.minecraft.setScreenAndShow(new PrismBrowserScreen(this, this.parent, onLoginNow))
+        ).bounds(this.width - 218, 3, 78, 16).build();
+        this.addRenderableWidget(myAccountsButton);
 
-        this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("Manual Refresh"),
-                btn -> this.client.setScreen(
+        this.addRenderableWidget(Button.builder(
+                Component.literal("Manual Refresh"),
+                btn -> this.minecraft.setScreenAndShow(
                         new ManualRefreshScreen(this))
-        ).dimensions(this.width - 312, 3, 90, 16).build());
+        ).bounds(this.width - 312, 3, 90, 16).build());
 
         // ── Search field (centered in header) ─────────────────────────────────
         int searchW = Math.min(200, this.width - 440);
         int searchX = (this.width - searchW) / 2;
-        searchField = new TextFieldWidget(
-                this.textRenderer, searchX, 3, searchW, 16,
-                Text.literal("Search"));
+        searchField = new EditBox(
+                this.font, searchX, 3, searchW, 16,
+                Component.literal("Search"));
         searchField.setMaxLength(64);
-        searchField.setPlaceholder(Text.literal("Search accounts..."));
-        searchField.setChangedListener(this::onSearchChanged);
-        this.addDrawableChild(searchField);
+        searchField.setHint(Component.literal("Search accounts..."));
+        searchField.setResponder(this::onSearchChanged);
+        this.addRenderableWidget(searchField);
 
         // ── Hypixel API key field (after Back button) ─────────────────────────
         int apiKeyX = 58;
         int apiKeyW = searchX - apiKeyX - 6;
         if (apiKeyW < 60) apiKeyW = 60;
         apiKeyField = new PasswordFieldWidget(
-                this.textRenderer, apiKeyX, 3, apiKeyW, 16,
-                Text.literal("API Key"));
+                this.font, apiKeyX, 3, apiKeyW, 16,
+                Component.literal("API Key"));
         apiKeyField.setMaxLength(128);
-        apiKeyField.setPlaceholder(Text.literal("Hypixel API Key..."));
-        apiKeyField.setText(ProxyConfig.getHypixelApiKey());
-        apiKeyField.setChangedListener(key -> ProxyConfig.setHypixelApiKey(key));
-        this.addDrawableChild(apiKeyField);
+        apiKeyField.setHint(Component.literal("Hypixel API Key..."));
+        apiKeyField.setValue(ProxyConfig.getHypixelApiKey());
+        apiKeyField.setResponder(key -> ProxyConfig.setHypixelApiKey(key));
+        this.addRenderableWidget(apiKeyField);
 
         // ── Notes field (bottom bar) ──────────────────────────────────────────
         int notesY = this.height - FOOTER_H + 2;
         int notesW = this.width - 8;
-        notesField = new TextFieldWidget(
-                this.textRenderer, 4, notesY, notesW, 14,
-                Text.literal("Notes"));
+        notesField = new EditBox(
+                this.font, 4, notesY, notesW, 14,
+                Component.literal("Notes"));
         notesField.setMaxLength(256);
-        notesField.setPlaceholder(Text.literal("Click a row to edit notes..."));
+        notesField.setHint(Component.literal("Click a row to edit notes..."));
         notesField.active = false;
-        notesField.setChangedListener(this::onNotesChanged);
-        this.addDrawableChild(notesField);
+        notesField.setResponder(this::onNotesChanged);
+        this.addRenderableWidget(notesField);
 
         if (!initialLoadDone) {
             initialLoadDone = true;
@@ -161,10 +159,10 @@ public class TokenBrowserScreen extends Screen {
         java.nio.file.Path dir = AccountStorage.getBaseDir();
         try {
             if (!Files.exists(dir)) Files.createDirectories(dir);
-        } catch (IOException e) {
-            TokenLoginClient.LOGGER.warn("Failed to create config dir: {}", e.getMessage());
+            java.awt.Desktop.getDesktop().open(dir.toFile());
+        } catch (Exception e) {
+            TokenLoginClient.LOGGER.warn("Failed to open config dir: {}", e.getMessage());
         }
-        Util.getOperatingSystem().open(dir.toFile());
     }
 
     // ── Search ────────────────────────────────────────────────────────────────
@@ -212,14 +210,14 @@ public class TokenBrowserScreen extends Screen {
         if (selectedAccount == acc) {
             selectedAccount = null;
             notesField.active = false;
-            notesField.setText("");
-            notesField.setPlaceholder(Text.literal("Click a row to edit notes..."));
+            notesField.setValue("");
+            notesField.setHint(Component.literal("Click a row to edit notes..."));
             return;
         }
         selectedAccount = acc;
         notesField.active = true;
-        notesField.setText(acc.notes != null ? acc.notes : "");
-        notesField.setPlaceholder(Text.literal("Add notes for " + acc.username + "..."));
+        notesField.setValue(acc.notes != null ? acc.notes : "");
+        notesField.setHint(Component.literal("Add notes for " + acc.username + "..."));
     }
 
     private void triggerReload(boolean silent) {
@@ -228,7 +226,7 @@ public class TokenBrowserScreen extends Screen {
 
         Thread t = new Thread(() -> {
             AccountManager.reload();
-            this.client.execute(() -> {
+            this.minecraft.execute(() -> {
                 int n = AccountManager.getAccounts().size();
                 setStatus(n == 0
                         ? "No accounts found — drop launcher files into config/tokenlogin/"
@@ -237,7 +235,7 @@ public class TokenBrowserScreen extends Screen {
                 reloadButton.active = true;
                 selectedAccount     = null;
                 notesField.active   = false;
-                notesField.setText("");
+                notesField.setValue("");
             });
         }, "TokenLogin-Reload");
         t.setDaemon(true);
@@ -247,7 +245,7 @@ public class TokenBrowserScreen extends Screen {
     // ── Render ────────────────────────────────────────────────────────────────
 
     @Override
-    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         ctx.fill(0, 0, this.width, this.height, 0xC0101010);
 
         // Header
@@ -299,25 +297,25 @@ public class TokenBrowserScreen extends Screen {
             int shown = accounts.size();
             String matchText = shown + "/" + total + " matches";
             int matchColor = shown == 0 ? 0xFFFF5555 : 0xFF55FFFF;
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(matchText),
-                    this.width - this.textRenderer.getWidth(matchText) - 6,
+            Gfx.textShadow(ctx,this.font,
+                    Component.literal(matchText),
+                    this.width - this.font.width(matchText) - 6,
                     this.height - FOOTER_H + 20, matchColor);
         }
 
         if (!statusText.isEmpty()) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(statusText), 4, this.height - FOOTER_H + 20, statusColor);
+            Gfx.textShadow(ctx,this.font,
+                    Component.literal(statusText), 4, this.height - FOOTER_H + 20, statusColor);
         }
 
         for (var element : this.children()) {
-            if (element instanceof Drawable drawable) {
-                drawable.render(ctx, mouseX, mouseY, delta);
+            if (element instanceof Renderable drawable) {
+                drawable.extractRenderState(ctx, mouseX, mouseY, delta);
             }
         }
     }
 
-    private void renderRow(DrawContext ctx, AccountEntry acc,
+    private void renderRow(GuiGraphicsExtractor ctx, AccountEntry acc,
                            int x, int y, int w, int h,
                            int mouseX, int mouseY, boolean hovered, boolean selected) {
         if (selected)     ctx.fill(x, y, x + w, y + h, 0x33FFFF55);
@@ -349,9 +347,9 @@ public class TokenBrowserScreen extends Screen {
         // Badge
         String badge = "[" + acc.badge() + "]";
         int    bc    = acc.badgeColor();
-        ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(badge).styled(s -> s.withColor(bc)), x + 2, lY1, bc);
-        int bw = this.textRenderer.getWidth(badge) + 4;
+        Gfx.textShadow(ctx,this.font,
+                Component.literal(badge).withStyle(s -> s.withColor(bc)), x + 2, lY1, bc);
+        int bw = this.font.width(badge) + 4;
 
         // Username with search highlight
         int    nc   = nameColor(acc);
@@ -365,41 +363,41 @@ public class TokenBrowserScreen extends Screen {
                 int nameX = x + 2 + bw;
                 String prefix = name.substring(0, matchIdx);
                 if (!prefix.isEmpty()) {
-                    ctx.drawTextWithShadow(this.textRenderer,
-                            Text.literal(prefix).styled(s -> s.withColor(nc)), nameX, lY1, nc);
-                    nameX += this.textRenderer.getWidth(prefix);
+                    Gfx.textShadow(ctx,this.font,
+                            Component.literal(prefix).withStyle(s -> s.withColor(nc)), nameX, lY1, nc);
+                    nameX += this.font.width(prefix);
                 }
                 String match = name.substring(matchIdx, Math.min(matchIdx + searchQuery.length(), name.length()));
-                ctx.drawTextWithShadow(this.textRenderer,
-                        Text.literal(match).styled(s -> s.withColor(0xFFFF55)), nameX, lY1, 0xFFFFFF55);
-                nameX += this.textRenderer.getWidth(match);
+                Gfx.textShadow(ctx,this.font,
+                        Component.literal(match).withStyle(s -> s.withColor(0xFFFF55)), nameX, lY1, 0xFFFFFF55);
+                nameX += this.font.width(match);
                 String suffix = name.substring(Math.min(matchIdx + searchQuery.length(), name.length()));
                 if (!suffix.isEmpty()) {
-                    ctx.drawTextWithShadow(this.textRenderer,
-                            Text.literal(suffix).styled(s -> s.withColor(nc)), nameX, lY1, nc);
+                    Gfx.textShadow(ctx,this.font,
+                            Component.literal(suffix).withStyle(s -> s.withColor(nc)), nameX, lY1, nc);
                 }
             } else {
-                ctx.drawTextWithShadow(this.textRenderer,
-                        Text.literal(name).styled(s -> s.withColor(nc)), x + 2 + bw, lY1, nc);
+                Gfx.textShadow(ctx,this.font,
+                        Component.literal(name).withStyle(s -> s.withColor(nc)), x + 2 + bw, lY1, nc);
             }
         } else {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(name).styled(s -> s.withColor(nc)), x + 2 + bw, lY1, nc);
+            Gfx.textShadow(ctx,this.font,
+                    Component.literal(name).withStyle(s -> s.withColor(nc)), x + 2 + bw, lY1, nc);
         }
 
-        int nameEnd = x + 2 + bw + this.textRenderer.getWidth(name) + 6;
+        int nameEnd = x + 2 + bw + this.font.width(name) + 6;
 
         // Notes (grey, truncated)
         if (acc.notes != null && !acc.notes.isBlank()) {
             int maxNotesW = rx - nameEnd - 8;
             if (maxNotesW > 20) {
                 String noteStr = acc.notes;
-                while (this.textRenderer.getWidth(noteStr) > maxNotesW && noteStr.length() > 1) {
+                while (this.font.width(noteStr) > maxNotesW && noteStr.length() > 1) {
                     noteStr = noteStr.substring(0, noteStr.length() - 1);
                 }
                 if (noteStr.length() < acc.notes.length()) noteStr += "..";
-                ctx.drawTextWithShadow(this.textRenderer,
-                        Text.literal(noteStr).styled(s -> s.withColor(0x999999)),
+                Gfx.textShadow(ctx,this.font,
+                        Component.literal(noteStr).withStyle(s -> s.withColor(0x999999)),
                         nameEnd, lY1, 0xFF999999);
             }
         }
@@ -408,32 +406,32 @@ public class TokenBrowserScreen extends Screen {
         int tx = x + 2;
         String jwtStr = jwtString(acc);
         int    jwtCol = jwtColor(acc);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal(jwtStr), tx, lY2, jwtCol);
-        tx += this.textRenderer.getWidth(jwtStr) + 8;
+        Gfx.textShadow(ctx,this.font, Component.literal(jwtStr), tx, lY2, jwtCol);
+        tx += this.font.width(jwtStr) + 8;
 
         if (tx < rx - 30) {
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal("|"), tx, lY2, 0xFF444444);
-            tx += this.textRenderer.getWidth("| ") + 2;
+            Gfx.textShadow(ctx,this.font, Component.literal("|"), tx, lY2, 0xFF444444);
+            tx += this.font.width("| ") + 2;
         }
         if (tx < rx - 4) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(refreshString(acc)), tx, lY2, refreshColor(acc));
-            tx += this.textRenderer.getWidth(refreshString(acc)) + 8;
+            Gfx.textShadow(ctx,this.font,
+                    Component.literal(refreshString(acc)), tx, lY2, refreshColor(acc));
+            tx += this.font.width(refreshString(acc)) + 8;
         }
 
         // Skyblock info: NW + coop
         String sbStr = skyblockString(acc);
         if (!sbStr.isEmpty() && tx < rx - 30) {
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal("|"), tx, lY2, 0xFF444444);
-            tx += this.textRenderer.getWidth("| ") + 2;
+            Gfx.textShadow(ctx,this.font, Component.literal("|"), tx, lY2, 0xFF444444);
+            tx += this.font.width("| ") + 2;
             if (tx < rx - 4) {
-                ctx.drawTextWithShadow(this.textRenderer,
-                        Text.literal(sbStr), tx, lY2, skyblockColor(acc));
+                Gfx.textShadow(ctx,this.font,
+                        Component.literal(sbStr), tx, lY2, skyblockColor(acc));
             }
         }
     }
 
-    private void drawBtn(DrawContext ctx, int mouseX, int mouseY,
+    private void drawBtn(GuiGraphicsExtractor ctx, int mouseX, int mouseY,
                          int bx, int by, int bw, int bh,
                          String label, boolean active) {
         boolean over = active
@@ -444,8 +442,8 @@ public class TokenBrowserScreen extends Screen {
         int fg     = !active ? 0xFF888888 : 0xFFFFFFFF;
         ctx.fill(bx, by, bx + bw, by + bh, border);
         ctx.fill(bx + 1, by + 1, bx + bw - 1, by + bh - 1, bg);
-        int tw = this.textRenderer.getWidth(label);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal(label),
+        int tw = this.font.width(label);
+        Gfx.textShadow(ctx,this.font, Component.literal(label),
                 bx + (bw - tw) / 2, by + (bh - 8) / 2, fg);
     }
 
@@ -512,13 +510,13 @@ public class TokenBrowserScreen extends Screen {
             try {
                 AccountManager.refreshAccount(acc, proxy);
                 refreshed = true;
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     acc.refreshState = AccountEntry.RefreshState.SUCCESS;
                     setStatus("Refreshed: " + acc.username, 0xFF55FF55);
                 });
             } catch (Exception e) {
                 TokenLoginClient.LOGGER.warn("Refresh failed [{}]: {}", acc.username, e.getMessage());
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     acc.refreshState = AccountEntry.RefreshState.FAILED;
                     acc.refreshError = e.getMessage() != null ? e.getMessage() : "Unknown error";
                     setStatus("Refresh failed: " + acc.refreshError, 0xFFFF5555);
@@ -540,12 +538,12 @@ public class TokenBrowserScreen extends Screen {
     }
 
     private void doLoginNow(AccountEntry acc) {
-        this.client.setScreen(parent);
+        this.minecraft.setScreenAndShow(parent);
         onLoginNow.accept(acc);
     }
 
     private void doCopy(AccountEntry acc) {
-        this.client.keyboard.setClipboard(acc.minecraftToken);
+        this.minecraft.keyboardHandler.setClipboard(acc.minecraftToken);
         setStatus("Token copied to clipboard — " + acc.username, 0xFF55FF55);
     }
 
@@ -554,7 +552,7 @@ public class TokenBrowserScreen extends Screen {
         if (selectedAccount == acc) {
             selectedAccount   = null;
             notesField.active = false;
-            notesField.setText("");
+            notesField.setValue("");
         }
         AccountManager.markDead(acc);
         setStatus(name + " removed. " + AccountManager.getAccounts().size() + " remaining.", 0xFFAAAAAA);

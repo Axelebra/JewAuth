@@ -1,10 +1,10 @@
 package dev.tokenlogin.client;
 
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
 /**
  * Manual refresh tester — enter a client_id and refresh_token,
@@ -14,12 +14,12 @@ public class ManualRefreshScreen extends Screen {
 
     private final Screen parent;
 
-    private TextFieldWidget clientIdField;
-    private TextFieldWidget refreshTokenField;
-    private ButtonWidget    endpointButton;
-    private ButtonWidget    refreshButton;
-    private ButtonWidget    copyButton;
-    private ButtonWidget    backButton;
+    private EditBox clientIdField;
+    private EditBox refreshTokenField;
+    private Button    endpointButton;
+    private Button    refreshButton;
+    private Button    copyButton;
+    private Button    backButton;
 
     private boolean liveAuth = false;
 
@@ -35,7 +35,7 @@ public class ManualRefreshScreen extends Screen {
     private int outputBoxY;
 
     public ManualRefreshScreen(Screen parent) {
-        super(Text.literal("Manual Refresh"));
+        super(Component.literal("Manual Refresh"));
         this.parent = parent;
     }
 
@@ -49,68 +49,68 @@ public class ManualRefreshScreen extends Screen {
         // ── Client ID ─────────────────────────────────────────────────────
         labelClientIdY = y;
         y += 12;
-        clientIdField = new TextFieldWidget(
-                this.textRenderer, left, y, fieldW, 20,
-                Text.literal("Client ID"));
+        clientIdField = new EditBox(
+                this.font, left, y, fieldW, 20,
+                Component.literal("Client ID"));
         clientIdField.setMaxLength(256);
         clientIdField.setSuggestion("Client ID");
-        this.addDrawableChild(clientIdField);
+        this.addRenderableWidget(clientIdField);
         y += 20 + 18;
 
         // ── Refresh Token ─────────────────────────────────────────────────
         labelRefreshY = y;
         y += 12;
-        refreshTokenField = new TextFieldWidget(
-                this.textRenderer, left, y, fieldW, 20,
-                Text.literal("Refresh Token"));
+        refreshTokenField = new EditBox(
+                this.font, left, y, fieldW, 20,
+                Component.literal("Refresh Token"));
         refreshTokenField.setMaxLength(4096);
         refreshTokenField.setSuggestion("Refresh Token");
-        this.addDrawableChild(refreshTokenField);
+        this.addRenderableWidget(refreshTokenField);
         y += 20 + 18;
 
         // ── Endpoint toggle ───────────────────────────────────────────────
-        endpointButton = ButtonWidget.builder(
-                Text.literal(endpointLabel()),
+        endpointButton = Button.builder(
+                Component.literal(endpointLabel()),
                 btn -> {
                     liveAuth = !liveAuth;
-                    btn.setMessage(Text.literal(endpointLabel()));
+                    btn.setMessage(Component.literal(endpointLabel()));
                     setFocused(null);
                 }
-        ).dimensions(left, y, fieldW, 20).build();
-        this.addDrawableChild(endpointButton);
+        ).bounds(left, y, fieldW, 20).build();
+        this.addRenderableWidget(endpointButton);
         y += 20 + 16;
 
         // ── Refresh button ────────────────────────────────────────────────
-        refreshButton = ButtonWidget.builder(
-                Text.literal("Refresh"),
+        refreshButton = Button.builder(
+                Component.literal("Refresh"),
                 btn -> { doRefresh(); setFocused(null); }
-        ).dimensions(cx - 50, y, 100, 20).build();
-        this.addDrawableChild(refreshButton);
+        ).bounds(cx - 50, y, 100, 20).build();
+        this.addRenderableWidget(refreshButton);
         y += 20 + 16;
 
         // ── Output box drawn in render() ──────────────────────────────────
         outputBoxY = y;
 
         // ── Copy button ───────────────────────────────────────────────────
-        copyButton = ButtonWidget.builder(
-                Text.literal("Copy Token"),
+        copyButton = Button.builder(
+                Component.literal("Copy Token"),
                 btn -> {
                     if (!resultToken.isBlank()) {
-                        this.client.keyboard.setClipboard(resultToken);
+                        this.minecraft.keyboardHandler.setClipboard(resultToken);
                         outputText  = "Copied to clipboard.";
                         outputColor = 0xFF55FF55;
                     }
                     setFocused(null);
                 }
-        ).dimensions(cx - 50, this.height - 28, 100, 20).build();
-        this.addDrawableChild(copyButton);
+        ).bounds(cx - 50, this.height - 28, 100, 20).build();
+        this.addRenderableWidget(copyButton);
 
         // ── Back ──────────────────────────────────────────────────────────
-        backButton = ButtonWidget.builder(
-                Text.literal("< Back"),
-                btn -> this.client.setScreen(parent)
-        ).dimensions(4, 3, 50, 16).build();
-        this.addDrawableChild(backButton);
+        backButton = Button.builder(
+                Component.literal("< Back"),
+                btn -> this.minecraft.setScreenAndShow(parent)
+        ).bounds(4, 3, 50, 16).build();
+        this.addRenderableWidget(backButton);
     }
 
     private String endpointLabel() {
@@ -119,8 +119,8 @@ public class ManualRefreshScreen extends Screen {
 
     private void doRefresh() {
         if (running) return;
-        String cid = clientIdField.getText().strip();
-        String rt  = refreshTokenField.getText().strip();
+        String cid = clientIdField.getValue().strip();
+        String rt  = refreshTokenField.getValue().strip();
 
         if (cid.isBlank()) { outputText = "Client ID is empty."; outputColor = 0xFFFF5555; return; }
         if (rt.isBlank())  { outputText = "Refresh token is empty."; outputColor = 0xFFFF5555; return; }
@@ -137,7 +137,7 @@ public class ManualRefreshScreen extends Screen {
                 ProxyEntry proxy = MicrosoftAuthChain.grabProxy();
                 MicrosoftAuthChain.RefreshResult result =
                         MicrosoftAuthChain.refresh(rt, cid, live, proxy);
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     running = false;
                     refreshButton.active = true;
                     resultToken = result.minecraftToken();
@@ -146,7 +146,7 @@ public class ManualRefreshScreen extends Screen {
                 });
             } catch (Exception e) {
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     running = false;
                     refreshButton.active = true;
                     outputText  = "FAILED: " + msg;
@@ -159,21 +159,21 @@ public class ManualRefreshScreen extends Screen {
     }
 
     @Override
-    public void render(DrawContext ctx, int mx, int my, float delta) {
-        super.render(ctx, mx, my, delta);
+    public void extractRenderState(GuiGraphicsExtractor ctx, int mx, int my, float delta) {
+        super.extractRenderState(ctx, mx, my, delta);
 
         int cx     = this.width / 2;
         int fieldW = Math.min(400, this.width - 60);
         int left   = cx - fieldW / 2;
 
         // Title
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("Manual Refresh"), cx, 14, 0xFFFFFFFF);
+        Gfx.centeredShadow(ctx, this.font,
+                Component.literal("Manual Refresh"), cx, 14, 0xFFFFFFFF);
 
         // Field labels
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal("Client ID"),
+        Gfx.textShadow(ctx, this.font, Component.literal("Client ID"),
                 left, labelClientIdY, 0xFF888888);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal("Refresh Token"),
+        Gfx.textShadow(ctx, this.font, Component.literal("Refresh Token"),
                 left, labelRefreshY, 0xFF888888);
 
         // Output box
@@ -188,27 +188,27 @@ public class ManualRefreshScreen extends Screen {
         }
     }
 
-    private void drawWrapped(DrawContext ctx, String text, int x, int y, int maxW, int color) {
+    private void drawWrapped(GuiGraphicsExtractor ctx, String text, int x, int y, int maxW, int color) {
         if (text == null || text.isBlank()) return;
         int lineH = 11;
         while (!text.isEmpty()) {
             String line = text;
-            if (this.textRenderer.getWidth(line) > maxW) {
+            if (this.font.width(line) > maxW) {
                 int b = line.length();
-                while (b > 0 && this.textRenderer.getWidth(line.substring(0, b)) > maxW) b--;
+                while (b > 0 && this.font.width(line.substring(0, b)) > maxW) b--;
                 if (b == 0) b = 1;
                 line = text.substring(0, b);
                 text = text.substring(b);
             } else {
                 text = "";
             }
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal(line), x, y, color);
+            Gfx.textShadow(ctx, this.font, Component.literal(line), x, y, color);
             y += lineH;
         }
     }
 
     @Override
-    public void close() {
-        this.client.setScreen(parent);
+    public void onClose() {
+        this.minecraft.setScreenAndShow(parent);
     }
 }

@@ -2,25 +2,25 @@ package dev.tokenlogin.client;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
 @Environment(EnvType.CLIENT)
-public class PasswordFieldWidget extends TextFieldWidget {
+public class PasswordFieldWidget extends EditBox {
 
-    public PasswordFieldWidget(TextRenderer textRenderer, int x, int y, int width, int height, Text text) {
-        super(textRenderer, x, y, width, height, text);
+    public PasswordFieldWidget(Font font, int x, int y, int width, int height, Component text) {
+        super(font, x, y, width, height, text);
     }
 
     @Override
-    public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Swap real text for asterisks, render, then restore
-        String real = this.getText();
+    public void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        // Swap real text for asterisks, extract, then restore
+        String real = this.getValue();
         String masked = "*".repeat(real.length());
-        super.setText(masked);
-        super.renderWidget(context, mouseX, mouseY, delta);
-        super.setText(real);
+        super.setValue(masked);
+        super.extractWidgetRenderState(context, mouseX, mouseY, delta);
+        super.setValue(real);
     }
 }

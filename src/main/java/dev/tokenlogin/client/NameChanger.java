@@ -4,8 +4,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.session.Session;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.User;
 import dev.tokenlogin.mixin.MinecraftClientAccessor;
 
 import java.io.InputStream;
@@ -40,8 +40,8 @@ public class NameChanger {
      * BLOCKING — always call from a background thread.
      */
     public static ChangeResult changeName(String newName) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        String token = client.getSession().getAccessToken();
+        Minecraft client = Minecraft.getInstance();
+        String token = client.getUser().getAccessToken();
 
         if (token == null || token.isBlank()) {
             statusMessage = "No token loaded";
@@ -137,17 +137,17 @@ public class NameChanger {
      * After a successful API name change, update the local session to reflect it.
      */
     public static void applyNewName(String newName, String rawUuid) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        Session old = mc.getSession();
+        Minecraft mc = Minecraft.getInstance();
+        User old = mc.getUser();
 
         UUID uuid;
         if (rawUuid != null && !rawUuid.isEmpty()) {
             uuid = uuidFromTrimmed(rawUuid);
         } else {
-            uuid = old.getUuidOrNull();
+            uuid = old.getProfileId();
         }
 
-        Session updated = new Session(
+        User updated = new User(
                 newName,
                 uuid,
                 old.getAccessToken(),

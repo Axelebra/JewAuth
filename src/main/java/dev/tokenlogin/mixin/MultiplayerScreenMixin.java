@@ -17,17 +17,15 @@ import dev.tokenlogin.client.TokenLoginClient;
 import dev.tokenlogin.client.TokenManager;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.TitleScreen;
-import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
-import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
-import net.minecraft.client.session.Session;
-import net.minecraft.text.Text;
+import net.minecraft.client.User;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -38,35 +36,35 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Environment(EnvType.CLIENT)
-@Mixin(MultiplayerScreen.class)
+@Mixin(JoinMultiplayerScreen.class)
 public abstract class MultiplayerScreenMixin extends Screen {
 
     // =====================================================================
     // Token login widgets (bottom-left)
     // =====================================================================
 
-    @Unique private TextFieldWidget tokenlogin$tokenField;
-    @Unique private ButtonWidget    tokenlogin$loginButton;
-    @Unique private ButtonWidget    tokenlogin$restoreButton;
-    @Unique private ButtonWidget    tokenlogin$browseButton;
+    @Unique private EditBox tokenlogin$tokenField;
+    @Unique private Button  tokenlogin$loginButton;
+    @Unique private Button  tokenlogin$restoreButton;
+    @Unique private Button  tokenlogin$browseButton;
 
     @Unique private static long   tokenlogin$expiryEpoch  = 0L;
     @Unique private static String tokenlogin$errorMessage = "";
 
     @Unique private volatile boolean tokenlogin$loginInProgress = false;
 
-    @Unique private static Session  tokenlogin$originalSession      = null;
+    @Unique private static User  tokenlogin$originalSession      = null;
 
     // =====================================================================
     // Proxy widgets (top-right)
     // =====================================================================
 
-    @Unique private TextFieldWidget     tokenlogin$proxyAddressField;
-    @Unique private TextFieldWidget     tokenlogin$proxyUserField;
+    @Unique private EditBox             tokenlogin$proxyAddressField;
+    @Unique private EditBox             tokenlogin$proxyUserField;
     @Unique private PasswordFieldWidget tokenlogin$proxyPassField;
-    @Unique private ButtonWidget        tokenlogin$proxyConnectButton;
-    @Unique private ButtonWidget        tokenlogin$proxyDisconnectButton;
-    @Unique private ButtonWidget        tokenlogin$proxyBrowseButton;
+    @Unique private Button              tokenlogin$proxyConnectButton;
+    @Unique private Button              tokenlogin$proxyDisconnectButton;
+    @Unique private Button              tokenlogin$proxyBrowseButton;
 
     @Unique private volatile boolean tokenlogin$proxyTestInProgress = false;
 
@@ -74,9 +72,9 @@ public abstract class MultiplayerScreenMixin extends Screen {
     // IGN changer widgets (top-left)
     // =====================================================================
 
-    @Unique private TextFieldWidget tokenlogin$nameField;
-    @Unique private ButtonWidget    tokenlogin$nameChangeButton;
-    @Unique private ButtonWidget    tokenlogin$nameModeButton;
+    @Unique private EditBox tokenlogin$nameField;
+    @Unique private Button  tokenlogin$nameChangeButton;
+    @Unique private Button  tokenlogin$nameModeButton;
 
     @Unique private static boolean tokenlogin$nameApiMode = false;
 
@@ -86,10 +84,10 @@ public abstract class MultiplayerScreenMixin extends Screen {
     // Selfban + AutoReconnect toggles (bottom-right)
     // =====================================================================
 
-    @Unique private ButtonWidget tokenlogin$selfbanButton;
-    @Unique private ButtonWidget tokenlogin$autoRecButton;
+    @Unique private Button tokenlogin$selfbanButton;
+    @Unique private Button tokenlogin$autoRecButton;
 
-    protected MultiplayerScreenMixin(Text title) { super(title); }
+    protected MultiplayerScreenMixin(Component title) { super(title); }
 
     // =====================================================================
     // init
@@ -100,8 +98,8 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
         ProxyConfig.load();
 
-        if (tokenlogin$originalSession == null && this.client != null) {
-            tokenlogin$originalSession = this.client.getSession();
+        if (tokenlogin$originalSession == null && this.minecraft != null) {
+            tokenlogin$originalSession = this.minecraft.getUser();
         }
 
         int h          = 14;
@@ -115,31 +113,31 @@ public abstract class MultiplayerScreenMixin extends Screen {
         int x = 4;
         int y = this.height - h - 2;
 
-        tokenlogin$tokenField = new TextFieldWidget(
-                this.textRenderer, x, y, fieldWidth, h,
-                Text.literal("Token"));
+        tokenlogin$tokenField = new EditBox(
+                this.font, x, y, fieldWidth, h,
+                Component.literal("Token"));
         tokenlogin$tokenField.setMaxLength(4096);
-        tokenlogin$tokenField.setPlaceholder(Text.literal("Paste token..."));
-        this.addDrawableChild(tokenlogin$tokenField);
+        tokenlogin$tokenField.setHint(Component.literal("Paste token..."));
+        this.addRenderableWidget(tokenlogin$tokenField);
 
-        tokenlogin$loginButton = ButtonWidget.builder(
-                Text.literal("Login"),
+        tokenlogin$loginButton = Button.builder(
+                Component.literal("Login"),
                 btn -> tokenlogin$handleLogin()
-        ).dimensions(x + fieldWidth + gap, y, loginW, h).build();
-        this.addDrawableChild(tokenlogin$loginButton);
+        ).bounds(x + fieldWidth + gap, y, loginW, h).build();
+        this.addRenderableWidget(tokenlogin$loginButton);
 
-        tokenlogin$restoreButton = ButtonWidget.builder(
-                Text.literal("Restore"),
+        tokenlogin$restoreButton = Button.builder(
+                Component.literal("Restore"),
                 btn -> tokenlogin$handleRestore()
-        ).dimensions(x + fieldWidth + gap + loginW + gap, y, restoreW, h).build();
+        ).bounds(x + fieldWidth + gap + loginW + gap, y, restoreW, h).build();
         tokenlogin$restoreButton.active = tokenlogin$originalSession != null;
-        this.addDrawableChild(tokenlogin$restoreButton);
+        this.addRenderableWidget(tokenlogin$restoreButton);
 
-        tokenlogin$browseButton = ButtonWidget.builder(
-                Text.literal("Browse..."),
+        tokenlogin$browseButton = Button.builder(
+                Component.literal("Browse..."),
                 btn -> tokenlogin$openBrowser()
-        ).dimensions(x + fieldWidth + gap + loginW + gap + restoreW + gap, y, browseW, h).build();
-        this.addDrawableChild(tokenlogin$browseButton);
+        ).bounds(x + fieldWidth + gap + loginW + gap + restoreW + gap, y, browseW, h).build();
+        this.addRenderableWidget(tokenlogin$browseButton);
 
         // ── Proxy (top-right) ────────────────────────────────────────────────
         int addrW        = 120;
@@ -150,48 +148,48 @@ public abstract class MultiplayerScreenMixin extends Screen {
         int row1Y        = 2;
         int row2Y        = row1Y + h + gap;
 
-        tokenlogin$proxyAddressField = new TextFieldWidget(
-                this.textRenderer, rightX, row1Y, addrW, h,
-                Text.literal("Address"));
+        tokenlogin$proxyAddressField = new EditBox(
+                this.font, rightX, row1Y, addrW, h,
+                Component.literal("Address"));
         tokenlogin$proxyAddressField.setMaxLength(256);
-        tokenlogin$proxyAddressField.setPlaceholder(Text.literal("ip:port"));
-        tokenlogin$proxyAddressField.setText(ProxyConfig.getAddress());
-        this.addDrawableChild(tokenlogin$proxyAddressField);
+        tokenlogin$proxyAddressField.setHint(Component.literal("ip:port"));
+        tokenlogin$proxyAddressField.setValue(ProxyConfig.getAddress());
+        this.addRenderableWidget(tokenlogin$proxyAddressField);
 
-        tokenlogin$proxyConnectButton = ButtonWidget.builder(
-                Text.literal("Connect"),
+        tokenlogin$proxyConnectButton = Button.builder(
+                Component.literal("Connect"),
                 btn -> tokenlogin$handleProxyConnect()
-        ).dimensions(rightX + addrW + gap, row1Y, btnW, h).build();
-        this.addDrawableChild(tokenlogin$proxyConnectButton);
+        ).bounds(rightX + addrW + gap, row1Y, btnW, h).build();
+        this.addRenderableWidget(tokenlogin$proxyConnectButton);
 
-        tokenlogin$proxyBrowseButton = ButtonWidget.builder(
-                Text.literal("Browse..."),
+        tokenlogin$proxyBrowseButton = Button.builder(
+                Component.literal("Browse..."),
                 btn -> tokenlogin$openProxyBrowser()
-        ).dimensions(rightX + addrW + gap + btnW + gap, row1Y, browseProxyW, h).build();
-        this.addDrawableChild(tokenlogin$proxyBrowseButton);
+        ).bounds(rightX + addrW + gap + btnW + gap, row1Y, browseProxyW, h).build();
+        this.addRenderableWidget(tokenlogin$proxyBrowseButton);
 
-        tokenlogin$proxyUserField = new TextFieldWidget(
-                this.textRenderer, rightX, row2Y, halfW, h,
-                Text.literal("Username"));
+        tokenlogin$proxyUserField = new EditBox(
+                this.font, rightX, row2Y, halfW, h,
+                Component.literal("Username"));
         tokenlogin$proxyUserField.setMaxLength(256);
-        tokenlogin$proxyUserField.setPlaceholder(Text.literal("User"));
-        tokenlogin$proxyUserField.setText(ProxyConfig.getUsername());
-        this.addDrawableChild(tokenlogin$proxyUserField);
+        tokenlogin$proxyUserField.setHint(Component.literal("User"));
+        tokenlogin$proxyUserField.setValue(ProxyConfig.getUsername());
+        this.addRenderableWidget(tokenlogin$proxyUserField);
 
         tokenlogin$proxyPassField = new PasswordFieldWidget(
-                this.textRenderer, rightX + halfW + gap, row2Y, halfW, h,
-                Text.literal("Password"));
+                this.font, rightX + halfW + gap, row2Y, halfW, h,
+                Component.literal("Password"));
         tokenlogin$proxyPassField.setMaxLength(256);
-        tokenlogin$proxyPassField.setPlaceholder(Text.literal("Pass"));
-        tokenlogin$proxyPassField.setText(ProxyConfig.getPassword());
-        this.addDrawableChild(tokenlogin$proxyPassField);
+        tokenlogin$proxyPassField.setHint(Component.literal("Pass"));
+        tokenlogin$proxyPassField.setValue(ProxyConfig.getPassword());
+        this.addRenderableWidget(tokenlogin$proxyPassField);
 
-        tokenlogin$proxyDisconnectButton = ButtonWidget.builder(
-                Text.literal("Off"),
+        tokenlogin$proxyDisconnectButton = Button.builder(
+                Component.literal("Off"),
                 btn -> tokenlogin$handleProxyDisconnect()
-        ).dimensions(rightX + addrW + gap, row2Y, btnW + gap + browseProxyW, h).build();
+        ).bounds(rightX + addrW + gap, row2Y, btnW + gap + browseProxyW, h).build();
         tokenlogin$proxyDisconnectButton.active = ProxyManager.isEnabled();
-        this.addDrawableChild(tokenlogin$proxyDisconnectButton);
+        this.addRenderableWidget(tokenlogin$proxyDisconnectButton);
 
         // ── IGN changer (top-left) ───────────────────────────────────────────
         int nameFieldW = 120;
@@ -200,24 +198,24 @@ public abstract class MultiplayerScreenMixin extends Screen {
         int nameX      = 4;
         int nameY      = 2;
 
-        tokenlogin$nameField = new TextFieldWidget(
-                this.textRenderer, nameX, nameY, nameFieldW, h,
-                Text.literal("IGN"));
+        tokenlogin$nameField = new EditBox(
+                this.font, nameX, nameY, nameFieldW, h,
+                Component.literal("IGN"));
         tokenlogin$nameField.setMaxLength(16);
-        tokenlogin$nameField.setPlaceholder(Text.literal("New name..."));
-        this.addDrawableChild(tokenlogin$nameField);
+        tokenlogin$nameField.setHint(Component.literal("New name..."));
+        this.addRenderableWidget(tokenlogin$nameField);
 
-        tokenlogin$nameChangeButton = ButtonWidget.builder(
-                Text.literal("Change"),
+        tokenlogin$nameChangeButton = Button.builder(
+                Component.literal("Change"),
                 btn -> tokenlogin$handleNameChange()
-        ).dimensions(nameX + nameFieldW + gap, nameY, nameBtnW, h).build();
-        this.addDrawableChild(tokenlogin$nameChangeButton);
+        ).bounds(nameX + nameFieldW + gap, nameY, nameBtnW, h).build();
+        this.addRenderableWidget(tokenlogin$nameChangeButton);
 
-        tokenlogin$nameModeButton = ButtonWidget.builder(
-                Text.literal(tokenlogin$nameApiMode ? "IGN" : "Hider"),
+        tokenlogin$nameModeButton = Button.builder(
+                Component.literal(tokenlogin$nameApiMode ? "IGN" : "Hider"),
                 btn -> tokenlogin$toggleNameMode()
-        ).dimensions(nameX + nameFieldW + gap + nameBtnW + gap, nameY, modeBtnW, h).build();
-        this.addDrawableChild(tokenlogin$nameModeButton);
+        ).bounds(nameX + nameFieldW + gap + nameBtnW + gap, nameY, modeBtnW, h).build();
+        this.addRenderableWidget(tokenlogin$nameModeButton);
 
         // ── AutoRec + Selfban (bottom-right) ─────────────────────────────────
         int autoRecW   = 72;
@@ -226,17 +224,17 @@ public abstract class MultiplayerScreenMixin extends Screen {
         int autoRecX   = selfbanX - autoRecW - gap;
         int selfbanY   = this.height - h - 2;
 
-        tokenlogin$autoRecButton = ButtonWidget.builder(
+        tokenlogin$autoRecButton = Button.builder(
                 tokenlogin$autoRecLabel(),
                 btn -> { AutoReconnect.toggle(); btn.setMessage(tokenlogin$autoRecLabel()); }
-        ).dimensions(autoRecX, selfbanY, autoRecW, h).build();
-        this.addDrawableChild(tokenlogin$autoRecButton);
+        ).bounds(autoRecX, selfbanY, autoRecW, h).build();
+        this.addRenderableWidget(tokenlogin$autoRecButton);
 
-        tokenlogin$selfbanButton = ButtonWidget.builder(
+        tokenlogin$selfbanButton = Button.builder(
                 tokenlogin$selfbanLabel(),
                 btn -> tokenlogin$handleSelfbanToggle()
-        ).dimensions(selfbanX, selfbanY, selfbanW, h).build();
-        this.addDrawableChild(tokenlogin$selfbanButton);
+        ).bounds(selfbanX, selfbanY, selfbanW, h).build();
+        this.addRenderableWidget(tokenlogin$selfbanButton);
 
     }
 
@@ -288,11 +286,11 @@ public abstract class MultiplayerScreenMixin extends Screen {
     }
 
     // =====================================================================
-    // render
+    // render (26.x: render-state extraction)
     // =====================================================================
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+    public void extractRenderState(GuiGraphicsExtractor extractor, int mouseX, int mouseY, float deltaTicks) {
         if (this.width != tokenlogin$lastW || this.height != tokenlogin$lastH) {
             tokenlogin$lastW = this.width;
             tokenlogin$lastH = this.height;
@@ -302,14 +300,14 @@ public abstract class MultiplayerScreenMixin extends Screen {
         if (tokenlogin$selfbanButton != null) {
             tokenlogin$selfbanButton.setMessage(tokenlogin$selfbanLabel());
         }
-        super.render(context, mouseX, mouseY, deltaTicks);
-        tokenlogin$renderTokenInfo(context);
-        tokenlogin$renderProxyStatus(context);
-        tokenlogin$renderNameStatus(context);
+        super.extractRenderState(extractor, mouseX, mouseY, deltaTicks);
+        tokenlogin$renderTokenInfo(extractor);
+        tokenlogin$renderProxyStatus(extractor);
+        tokenlogin$renderNameStatus(extractor);
     }
 
     @Unique
-    private void tokenlogin$renderTokenInfo(DrawContext context) {
+    private void tokenlogin$renderTokenInfo(GuiGraphicsExtractor context) {
         int h = 14;
 
         // Widget row sits at the very bottom
@@ -331,11 +329,11 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
         String username = NickHider.isEnabled()
                 ? NickHider.getFakeName()
-                : (this.client != null ? this.client.getSession().getUsername() : "unknown");
+                : (this.minecraft != null ? this.minecraft.getUser().getName() : "unknown");
 
-        context.drawTextWithShadow(this.textRenderer,
-                Text.literal("Logged in as: " + username),
-                4, stripTop + 3, 0xFFFFFFFF);
+        context.text(this.font,
+                Component.literal("Logged in as: " + username),
+                4, stripTop + 3, 0xFFFFFFFF, true);
 
         String line2;
         int    color2;
@@ -359,14 +357,14 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
         // Only draw line 2 if there's room (strip is now 20px, line needs ~9px each)
         if (stripBottom - stripTop >= 20) {
-            context.drawTextWithShadow(this.textRenderer,
-                    Text.literal(line2),
-                    4, stripTop + 3 + 10, color2);
+            context.text(this.font,
+                    Component.literal(line2),
+                    4, stripTop + 3 + 10, color2, true);
         }
     }
 
     @Unique
-    private void tokenlogin$renderProxyStatus(DrawContext context) {
+    private void tokenlogin$renderProxyStatus(GuiGraphicsExtractor context) {
         int h       = 14;
         int statusY = 2 + h + 2 + h + 3;
         int addrW   = 120;
@@ -380,11 +378,11 @@ public abstract class MultiplayerScreenMixin extends Screen {
         String msg   = ProxyManager.getStatusMessage();
         int    color = ProxyManager.getStatusColor();
         if (msg.isEmpty()) { msg = "No proxy"; color = 0xFF888888; }
-        context.drawTextWithShadow(this.textRenderer, Text.literal(msg), rightX, statusY, color);
+        context.text(this.font, Component.literal(msg), rightX, statusY, color, true);
     }
 
     @Unique
-    private void tokenlogin$renderNameStatus(DrawContext context) {
+    private void tokenlogin$renderNameStatus(GuiGraphicsExtractor context) {
         int h          = 14;
         int statusY    = 2 + h + 3;
         int nameFieldW = 120;
@@ -409,7 +407,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
         if (!msg.isEmpty()) {
             context.fill(bgLeft, bgTop, bgRight, bgBottom, 0xBB000000);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(msg), 4, statusY, color);
+            context.text(this.font, Component.literal(msg), 4, statusY, color, true);
         }
     }
 
@@ -419,11 +417,11 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
     @Unique
     private void tokenlogin$openBrowser() {
-        MultiplayerScreen self = (MultiplayerScreen)(Object) this;
-        this.client.setScreen(new TokenBrowserScreen(
+        JoinMultiplayerScreen self = (JoinMultiplayerScreen)(Object) this;
+        this.minecraft.setScreenAndShow(new TokenBrowserScreen(
                 self,
                 token -> {
-                    tokenlogin$tokenField.setText(token);
+                    tokenlogin$tokenField.setValue(token);
                     tokenlogin$errorMessage = "Token pasted — press Login";
                     TokenManager.ExpiryInfo exp = TokenManager.decodeExpiry(token);
                     tokenlogin$expiryEpoch = exp != null ? exp.expireEpochSeconds() : 0L;
@@ -447,20 +445,20 @@ public abstract class MultiplayerScreenMixin extends Screen {
             String displayName = (account.username != null && !account.username.isBlank())
                     ? account.username : "Player";
 
-            Session session = new Session(
+            User session = new User(
                     displayName,
                     uuid,
                     account.minecraftToken,
                     Optional.empty(),
                     Optional.empty()
             );
-            ((MinecraftClientAccessor) this.client).tokenlogin$setSession(session);
+            ((MinecraftClientAccessor) this.minecraft).tokenlogin$setSession(session);
 
             TokenManager.ExpiryInfo exp = TokenManager.decodeExpiry(account.minecraftToken);
             tokenlogin$expiryEpoch  = exp != null ? exp.expireEpochSeconds() : 0L;
             tokenlogin$errorMessage = "";
 
-            tokenlogin$tokenField.setText(account.minecraftToken);
+            tokenlogin$tokenField.setValue(account.minecraftToken);
 
             TokenLoginClient.LOGGER.info("Session applied from browser: {} (skipped API)", displayName);
 
@@ -480,9 +478,9 @@ public abstract class MultiplayerScreenMixin extends Screen {
                         break;
                     }
                 }
-                tokenlogin$proxyAddressField.setText(addr);
-                tokenlogin$proxyUserField.setText(user);
-                tokenlogin$proxyPassField.setText(pass);
+                tokenlogin$proxyAddressField.setValue(addr);
+                tokenlogin$proxyUserField.setValue(user);
+                tokenlogin$proxyPassField.setValue(pass);
                 tokenlogin$handleProxyConnect();
             } else {
                 tokenlogin$handleProxyDisconnect();
@@ -505,7 +503,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
         Thread t = new Thread(() -> {
             try {
                 TokenManager.SessionInfo info = TokenManager.authenticate(account.minecraftToken);
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     boolean changed = false;
 
                     if (!info.username().equals(account.username)) {
@@ -546,12 +544,12 @@ public abstract class MultiplayerScreenMixin extends Screen {
         tokenlogin$loginInProgress    = true;
         tokenlogin$loginButton.active = false;
         tokenlogin$errorMessage       = "Authenticating...";
-        tokenlogin$tokenField.setText(token);
+        tokenlogin$tokenField.setValue(token);
 
         Thread t = new Thread(() -> {
             try {
                 TokenManager.SessionInfo info = TokenManager.authenticate(token);
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     TokenManager.applySession(info, token);
                     TokenManager.ExpiryInfo fresh = TokenManager.decodeExpiry(token);
                     tokenlogin$expiryEpoch         = fresh != null ? fresh.expireEpochSeconds() : 0L;
@@ -560,7 +558,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
                     tokenlogin$loginInProgress     = false;
                 });
             } catch (Exception e) {
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     tokenlogin$errorMessage        = e.getMessage();
                     tokenlogin$expiryEpoch         = 0L;
                     tokenlogin$loginButton.active  = true;
@@ -580,7 +578,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
     private void tokenlogin$handleLogin() {
         if (tokenlogin$loginInProgress) return;
 
-        String token = tokenlogin$tokenField.getText().trim();
+        String token = tokenlogin$tokenField.getValue().trim();
         if (token.isEmpty()) {
             tokenlogin$errorMessage = "Enter a token first";
             tokenlogin$expiryEpoch  = 0L;
@@ -604,11 +602,11 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
     @Unique
     private void tokenlogin$handleRestore() {
-        if (tokenlogin$originalSession == null || this.client == null) return;
-        ((MinecraftClientAccessor) this.client).tokenlogin$setSession(tokenlogin$originalSession);
+        if (tokenlogin$originalSession == null || this.minecraft == null) return;
+        ((MinecraftClientAccessor) this.minecraft).tokenlogin$setSession(tokenlogin$originalSession);
         tokenlogin$expiryEpoch  = 0L;
         tokenlogin$errorMessage = "";
-        TokenLoginClient.LOGGER.info("Session restored: {}", tokenlogin$originalSession.getUsername());
+        TokenLoginClient.LOGGER.info("Session restored: {}", tokenlogin$originalSession.getName());
     }
 
     // =====================================================================
@@ -619,7 +617,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
     private void tokenlogin$toggleNameMode() {
         tokenlogin$nameApiMode = !tokenlogin$nameApiMode;
         tokenlogin$nameModeButton.setMessage(
-                Text.literal(tokenlogin$nameApiMode ? "IGN" : "Hider"));
+                Component.literal(tokenlogin$nameApiMode ? "IGN" : "Hider"));
         if (tokenlogin$nameApiMode && NickHider.isEnabled()) {
             NickHider.disable();
         }
@@ -628,7 +626,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
     @Unique
     private void tokenlogin$handleNameChange() {
         if (tokenlogin$nameChangeInProgress) return;
-        String newName = tokenlogin$nameField.getText().trim();
+        String newName = tokenlogin$nameField.getValue().trim();
         if (newName.isEmpty()) return;
 
         if (tokenlogin$nameApiMode) {
@@ -637,7 +635,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
             Thread t = new Thread(() -> {
                 NameChanger.ChangeResult result = NameChanger.changeName(newName);
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     if (result.success()) NameChanger.applyNewName(result.newName(), result.uuid());
                     tokenlogin$nameChangeInProgress    = false;
                     tokenlogin$nameChangeButton.active = true;
@@ -662,16 +660,16 @@ public abstract class MultiplayerScreenMixin extends Screen {
         if (newState == SelfBan.State.ON) {
             // Auto-connect to the SelfBan target when confirmed. SelfBan owns the
             // connect target/name so the reconnect-until-banned loop stays consistent.
-            SelfBan.connect(new MultiplayerScreen(new TitleScreen()));
+            SelfBan.connect(new JoinMultiplayerScreen(new TitleScreen()));
         }
     }
 
     @Unique
-    private static Text tokenlogin$selfbanLabel() {
+    private static Component tokenlogin$selfbanLabel() {
         return switch (SelfBan.getState()) {
-            case OFF        -> Text.literal("Selfban: ").append(Text.literal("OFF").styled(s -> s.withColor(0xFF5555)));
-            case CONFIRMING -> Text.literal("Sure?").styled(s -> s.withColor(0xFFAA00));
-            case ON         -> Text.literal("Selfban: ").append(Text.literal("ON").styled(s -> s.withColor(0x55FF55)));
+            case OFF        -> Component.literal("Selfban: ").append(Component.literal("OFF").withStyle(s -> s.withColor(0xFF5555)));
+            case CONFIRMING -> Component.literal("Sure?").withStyle(s -> s.withColor(0xFFAA00));
+            case ON         -> Component.literal("Selfban: ").append(Component.literal("ON").withStyle(s -> s.withColor(0x55FF55)));
         };
     }
 
@@ -680,13 +678,13 @@ public abstract class MultiplayerScreenMixin extends Screen {
     // =====================================================================
 
     @Unique
-    private static Text tokenlogin$autoRecLabel() {
+    private static Component tokenlogin$autoRecLabel() {
         if (AutoReconnect.isEnabled()) {
-            return Text.literal("AutoRec: ")
-                    .append(Text.literal("ON").styled(s -> s.withColor(0x55FF55)));
+            return Component.literal("AutoRec: ")
+                    .append(Component.literal("ON").withStyle(s -> s.withColor(0x55FF55)));
         }
-        return Text.literal("AutoRec: ")
-                .append(Text.literal("OFF").styled(s -> s.withColor(0xFF5555)));
+        return Component.literal("AutoRec: ")
+                .append(Component.literal("OFF").withStyle(s -> s.withColor(0xFF5555)));
     }
 
     // =====================================================================
@@ -695,8 +693,8 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
     @Unique
     private void tokenlogin$openProxyBrowser() {
-        MultiplayerScreen self = (MultiplayerScreen)(Object) this;
-        this.client.setScreen(new ProxyBrowserScreen(
+        JoinMultiplayerScreen self = (JoinMultiplayerScreen)(Object) this;
+        this.minecraft.setScreenAndShow(new ProxyBrowserScreen(
                 self,
                 entry -> tokenlogin$applyProxySelection(entry),
                 entry -> {
@@ -709,9 +707,9 @@ public abstract class MultiplayerScreenMixin extends Screen {
     @Unique
     private void tokenlogin$applyProxySelection(ProxyEntry entry) {
         // Populate the multiplayer screen fields with the selected proxy
-        tokenlogin$proxyAddressField.setText(entry.address);
-        tokenlogin$proxyUserField.setText(entry.username);
-        tokenlogin$proxyPassField.setText(entry.password);
+        tokenlogin$proxyAddressField.setValue(entry.address);
+        tokenlogin$proxyUserField.setValue(entry.username);
+        tokenlogin$proxyPassField.setValue(entry.password);
 
         // Sync legacy config fields
         ProxyConfig.setAddress(entry.address);
@@ -729,20 +727,20 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
     @Unique
     private void tokenlogin$saveProxyFields() {
-        ProxyConfig.setAddress(tokenlogin$proxyAddressField.getText().trim());
-        ProxyConfig.setUsername(tokenlogin$proxyUserField.getText().trim());
-        ProxyConfig.setPassword(tokenlogin$proxyPassField.getText().trim());
+        ProxyConfig.setAddress(tokenlogin$proxyAddressField.getValue().trim());
+        ProxyConfig.setUsername(tokenlogin$proxyUserField.getValue().trim());
+        ProxyConfig.setPassword(tokenlogin$proxyPassField.getValue().trim());
         ProxyConfig.save();
     }
 
     @Unique
     private void tokenlogin$handleProxyConnect() {
         if (tokenlogin$proxyTestInProgress) return;
-        String address = tokenlogin$proxyAddressField.getText().trim();
+        String address = tokenlogin$proxyAddressField.getValue().trim();
         if (address.isEmpty()) { ProxyManager.disable(); return; }
 
-        String user = tokenlogin$proxyUserField.getText().trim();
-        String pass = tokenlogin$proxyPassField.getText().trim();
+        String user = tokenlogin$proxyUserField.getValue().trim();
+        String pass = tokenlogin$proxyPassField.getValue().trim();
 
         tokenlogin$saveProxyFields();
         tokenlogin$proxyTestInProgress       = true;
@@ -750,7 +748,7 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
         Thread t = new Thread(() -> {
             ProxyManager.ProxyType result = ProxyManager.testAndConnect(address, user, pass);
-            this.client.execute(() -> {
+            this.minecraft.execute(() -> {
                 tokenlogin$proxyTestInProgress          = false;
                 tokenlogin$proxyConnectButton.active    = true;
                 tokenlogin$proxyDisconnectButton.active = (result != ProxyManager.ProxyType.NONE);

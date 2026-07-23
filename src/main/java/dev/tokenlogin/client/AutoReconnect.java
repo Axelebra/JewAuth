@@ -2,12 +2,12 @@ package dev.tokenlogin.client;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.TitleScreen;
-import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
-import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
-import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import net.minecraft.client.multiplayer.ServerData;
 
 /**
  * Auto-reconnect — waits a short delay after disconnect then reconnects.
@@ -23,7 +23,7 @@ public class AutoReconnect {
     public static final int RECONNECT_DELAY_TICKS = 20;
 
     private static boolean enabled = false;
-    private static ServerInfo lastServer = null;
+    private static ServerData lastServer = null;
 
     public static boolean isEnabled() { return enabled; }
 
@@ -32,17 +32,17 @@ public class AutoReconnect {
         TokenLoginClient.LOGGER.info("AutoReconnect {}", enabled ? "enabled" : "disabled");
     }
 
-    public static void setLastServer(ServerInfo server) {
+    public static void setLastServer(ServerData server) {
         if (server != null) lastServer = server;
     }
 
-    public static ServerInfo getLastServer() { return lastServer; }
+    public static ServerData getLastServer() { return lastServer; }
 
-    public static void connect(MinecraftClient mc) {
+    public static void connect(Minecraft mc) {
         if (lastServer == null) return;
-        ServerAddress addr = ServerAddress.parse(lastServer.address);
-        mc.execute(() -> ConnectScreen.connect(
-                new MultiplayerScreen(new TitleScreen()),
+        ServerAddress addr = ServerAddress.parseString(lastServer.ip);
+        mc.execute(() -> ConnectScreen.startConnecting(
+                new JoinMultiplayerScreen(new TitleScreen()),
                 mc, addr, lastServer, false, null
         ));
     }

@@ -4,11 +4,11 @@ import dev.tokenlogin.client.AutoReconnect;
 import dev.tokenlogin.client.SelfBan;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.gui.screen.DisconnectedScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.network.DisconnectionInfo;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.DisconnectedScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.DisconnectionDetails;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -23,18 +23,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(DisconnectedScreen.class)
 public abstract class DisconnectedScreenMixin extends Screen {
 
-    @Unique private ButtonWidget tokenlogin$reconnectBtn;
-    @Unique private ButtonWidget tokenlogin$toggleBtn;
+    @Unique private Button tokenlogin$reconnectBtn;
+    @Unique private Button tokenlogin$toggleBtn;
     @Unique private double tokenlogin$countdown = AutoReconnect.RECONNECT_DELAY_TICKS;
 
-    protected DisconnectedScreenMixin(Text title) { super(title); }
+    protected DisconnectedScreenMixin(Component title) { super(title); }
 
     @Inject(method = "init", at = @At("TAIL"))
     private void tokenlogin$onInit(CallbackInfo ci) {
         // If SelfBan was running, feed it the disconnect reason so it can
         // reconnect (or stop, if the reason looks like a ban).
         if (SelfBan.isEnabled()) {
-            DisconnectionInfo info = ((DisconnectedScreenAccessor) this).tokenlogin$getInfo();
+            DisconnectionDetails info = ((DisconnectedScreenAccessor) this).tokenlogin$getInfo();
             String reason = (info == null || info.reason() == null) ? "" : info.reason().getString();
             SelfBan.handleDisconnect(reason);
         }
@@ -44,23 +44,23 @@ public abstract class DisconnectedScreenMixin extends Screen {
         int btnW = 150, btnH = 20;
         int x = this.width - btnW - 4;
 
-        tokenlogin$reconnectBtn = ButtonWidget.builder(
-                Text.literal(tokenlogin$reconnectText()),
-                btn -> AutoReconnect.connect(this.client)
-        ).dimensions(x, 4, btnW, btnH).build();
+        tokenlogin$reconnectBtn = Button.builder(
+                Component.literal(tokenlogin$reconnectText()),
+                btn -> AutoReconnect.connect(this.minecraft)
+        ).bounds(x, 4, btnW, btnH).build();
 
-        tokenlogin$toggleBtn = ButtonWidget.builder(
-                Text.literal(tokenlogin$toggleText()),
+        tokenlogin$toggleBtn = Button.builder(
+                Component.literal(tokenlogin$toggleText()),
                 btn -> {
                     AutoReconnect.toggle();
                     tokenlogin$countdown = AutoReconnect.RECONNECT_DELAY_TICKS;
-                    btn.setMessage(Text.literal(tokenlogin$toggleText()));
-                    tokenlogin$reconnectBtn.setMessage(Text.literal(tokenlogin$reconnectText()));
+                    btn.setMessage(Component.literal(tokenlogin$toggleText()));
+                    tokenlogin$reconnectBtn.setMessage(Component.literal(tokenlogin$reconnectText()));
                 }
-        ).dimensions(x, 28, btnW, btnH).build();
+        ).bounds(x, 28, btnW, btnH).build();
 
-        this.addDrawableChild(tokenlogin$reconnectBtn);
-        this.addDrawableChild(tokenlogin$toggleBtn);
+        this.addRenderableWidget(tokenlogin$reconnectBtn);
+        this.addRenderableWidget(tokenlogin$toggleBtn);
     }
 
     @Override
@@ -71,10 +71,10 @@ public abstract class DisconnectedScreenMixin extends Screen {
 
         if (AutoReconnect.isEnabled() && AutoReconnect.getLastServer() != null) {
             if (tokenlogin$countdown <= 0) {
-                AutoReconnect.connect(this.client);
+                AutoReconnect.connect(this.minecraft);
             } else {
                 tokenlogin$countdown--;
-                tokenlogin$reconnectBtn.setMessage(Text.literal(tokenlogin$reconnectText()));
+                tokenlogin$reconnectBtn.setMessage(Component.literal(tokenlogin$reconnectText()));
             }
         }
     }

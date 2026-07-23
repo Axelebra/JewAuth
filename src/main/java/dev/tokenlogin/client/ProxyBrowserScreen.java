@@ -3,12 +3,12 @@ package dev.tokenlogin.client;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -43,15 +43,15 @@ public class ProxyBrowserScreen extends Screen {
     private final Consumer<ProxyEntry> onSelect;       // row body click = populate fields
     private final Consumer<ProxyEntry> onConnectNow;   // Connect button = populate + auto-connect
 
-    private ButtonWidget backButton;
-    private ButtonWidget addNewButton;
+    private Button backButton;
+    private Button addNewButton;
 
     // Bottom bar — edit/add fields
-    private TextFieldWidget     addressField;
-    private TextFieldWidget     userField;
+    private EditBox     addressField;
+    private EditBox     userField;
     private PasswordFieldWidget passField;
-    private TextFieldWidget     nameField;
-    private ButtonWidget        saveButton;
+    private EditBox     nameField;
+    private Button        saveButton;
 
     private String statusText  = "";
     private int    statusColor = 0xFFAAAAAA;
@@ -68,7 +68,7 @@ public class ProxyBrowserScreen extends Screen {
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public ProxyBrowserScreen(Screen parent, Consumer<ProxyEntry> onSelect, Consumer<ProxyEntry> onConnectNow) {
-        super(Text.literal("Proxy Browser"));
+        super(Component.literal("Proxy Browser"));
         this.parent       = parent;
         this.onSelect     = onSelect;
         this.onConnectNow = onConnectNow;
@@ -78,17 +78,17 @@ public class ProxyBrowserScreen extends Screen {
 
     @Override
     protected void init() {
-        backButton = ButtonWidget.builder(
-                Text.literal("< Back"),
-                btn -> this.client.setScreen(parent)
-        ).dimensions(4, 3, 50, 16).build();
-        this.addDrawableChild(backButton);
+        backButton = Button.builder(
+                Component.literal("< Back"),
+                btn -> this.minecraft.setScreenAndShow(parent)
+        ).bounds(4, 3, 50, 16).build();
+        this.addRenderableWidget(backButton);
 
-        addNewButton = ButtonWidget.builder(
-                Text.literal("Add New"),
+        addNewButton = Button.builder(
+                Component.literal("Add New"),
                 btn -> startAddNew()
-        ).dimensions(this.width - 62, 3, 58, 16).build();
-        this.addDrawableChild(addNewButton);
+        ).bounds(this.width - 62, 3, 58, 16).build();
+        this.addRenderableWidget(addNewButton);
 
         // ── Bottom bar fields ─────────────────────────────────────────────────
         int h     = 14;
@@ -101,37 +101,37 @@ public class ProxyBrowserScreen extends Screen {
         int halfW    = 80;
         int saveBtnW = 44;
 
-        nameField = new TextFieldWidget(
-                this.textRenderer, 4, row1Y, nameW, h, Text.literal("Name"));
+        nameField = new EditBox(
+                this.font, 4, row1Y, nameW, h, Component.literal("Name"));
         nameField.setMaxLength(64);
-        nameField.setPlaceholder(Text.literal("Label..."));
-        this.addDrawableChild(nameField);
+        nameField.setHint(Component.literal("Label..."));
+        this.addRenderableWidget(nameField);
 
-        addressField = new TextFieldWidget(
-                this.textRenderer, 4 + nameW + gap, row1Y, addrW, h, Text.literal("Address"));
+        addressField = new EditBox(
+                this.font, 4 + nameW + gap, row1Y, addrW, h, Component.literal("Address"));
         addressField.setMaxLength(256);
-        addressField.setPlaceholder(Text.literal("ip:port"));
-        this.addDrawableChild(addressField);
+        addressField.setHint(Component.literal("ip:port"));
+        this.addRenderableWidget(addressField);
 
-        userField = new TextFieldWidget(
-                this.textRenderer, 4 + nameW + gap + addrW + gap, row1Y, halfW, h,
-                Text.literal("User"));
+        userField = new EditBox(
+                this.font, 4 + nameW + gap + addrW + gap, row1Y, halfW, h,
+                Component.literal("User"));
         userField.setMaxLength(256);
-        userField.setPlaceholder(Text.literal("User"));
-        this.addDrawableChild(userField);
+        userField.setHint(Component.literal("User"));
+        this.addRenderableWidget(userField);
 
         passField = new PasswordFieldWidget(
-                this.textRenderer, 4 + nameW + gap + addrW + gap + halfW + gap, row1Y, halfW, h,
-                Text.literal("Pass"));
+                this.font, 4 + nameW + gap + addrW + gap + halfW + gap, row1Y, halfW, h,
+                Component.literal("Pass"));
         passField.setMaxLength(256);
-        passField.setPlaceholder(Text.literal("Pass"));
-        this.addDrawableChild(passField);
+        passField.setHint(Component.literal("Pass"));
+        this.addRenderableWidget(passField);
 
-        saveButton = ButtonWidget.builder(
-                Text.literal("Save"),
+        saveButton = Button.builder(
+                Component.literal("Save"),
                 btn -> handleSave()
-        ).dimensions(4 + nameW + gap + addrW + gap + halfW + gap + halfW + gap, row1Y, saveBtnW, h).build();
-        this.addDrawableChild(saveButton);
+        ).bounds(4 + nameW + gap + addrW + gap + halfW + gap + halfW + gap, row1Y, saveBtnW, h).build();
+        this.addRenderableWidget(saveButton);
 
         if (!loaded) {
             loaded = true;
@@ -151,26 +151,26 @@ public class ProxyBrowserScreen extends Screen {
 
     private void startAddNew() {
         editingEntry = null;
-        nameField.setText("");
-        addressField.setText("");
-        userField.setText("");
-        passField.setText("");
+        nameField.setValue("");
+        addressField.setValue("");
+        userField.setValue("");
+        passField.setValue("");
         nameField.setFocused(true);
         setStatus("Fill in details and click Save", 0xFFFFAA00);
     }
 
     private void startEdit(ProxyEntry entry) {
         editingEntry = entry;
-        nameField.setText(entry.name);
-        addressField.setText(entry.address);
-        userField.setText(entry.username);
-        passField.setText(entry.password);
+        nameField.setValue(entry.name);
+        addressField.setValue(entry.address);
+        userField.setValue(entry.username);
+        passField.setValue(entry.password);
         nameField.setFocused(true);
         setStatus("Editing: " + (entry.name.isEmpty() ? entry.address : entry.name), 0xFFFFAA00);
     }
 
     private void handleSave() {
-        String addr = addressField.getText().trim();
+        String addr = addressField.getValue().trim();
         if (addr.isEmpty()) {
             setStatus("Address is required", 0xFFFF5555);
             return;
@@ -192,40 +192,40 @@ public class ProxyBrowserScreen extends Screen {
 
         if (editingEntry != null) {
             // Update existing
-            editingEntry.name     = nameField.getText().trim();
+            editingEntry.name     = nameField.getValue().trim();
             editingEntry.address  = addr;
-            editingEntry.username = userField.getText().trim();
-            editingEntry.password = passField.getText().trim();
+            editingEntry.username = userField.getValue().trim();
+            editingEntry.password = passField.getValue().trim();
             ProxyConfig.updateProxy(editingEntry);
             setStatus("Updated: " + (editingEntry.name.isEmpty() ? addr : editingEntry.name), 0xFF55FF55);
         } else {
             // Add new
             ProxyEntry entry = new ProxyEntry();
-            entry.name     = nameField.getText().trim();
+            entry.name     = nameField.getValue().trim();
             entry.address  = addr;
-            entry.username = userField.getText().trim();
-            entry.password = passField.getText().trim();
+            entry.username = userField.getValue().trim();
+            entry.password = passField.getValue().trim();
             ProxyConfig.addProxy(entry);
             setStatus("Added: " + (entry.name.isEmpty() ? addr : entry.name), 0xFF55FF55);
         }
 
         editingEntry = null;
-        nameField.setText("");
-        addressField.setText("");
-        userField.setText("");
-        passField.setText("");
+        nameField.setValue("");
+        addressField.setValue("");
+        userField.setValue("");
+        passField.setValue("");
     }
 
     // ── Render ────────────────────────────────────────────────────────────────
 
     @Override
-    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         ctx.fill(0, 0, this.width, this.height, 0xC0101010);
 
         // Header
         ctx.fill(0, 0, this.width, HEADER_H, 0xDD000000);
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("Proxy Browser"), this.width / 2, 7, 0xFF55FFFF);
+        Gfx.centeredShadow(ctx, this.font,
+                Component.literal("Proxy Browser"), this.width / 2, 7, 0xFF55FFFF);
 
         // Row list
         List<ProxyEntry> list = ProxyConfig.getProxies();
@@ -274,14 +274,14 @@ public class ProxyBrowserScreen extends Screen {
 
         // Status text
         if (!statusText.isEmpty()) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(statusText), 4, this.height - FOOTER_H + 38, statusColor);
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(statusText), 4, this.height - FOOTER_H + 38, statusColor);
         }
 
         // Draw all widgets
         for (var element : this.children()) {
-            if (element instanceof Drawable drawable) {
-                drawable.render(ctx, mouseX, mouseY, delta);
+            if (element instanceof Renderable drawable) {
+                drawable.extractRenderState(ctx, mouseX, mouseY, delta);
             }
         }
 
@@ -294,7 +294,7 @@ public class ProxyBrowserScreen extends Screen {
     private static final int CONFIRM_W = 220;
     private static final int CONFIRM_H = 60;
 
-    private void renderConfirmDialog(DrawContext ctx, int mouseX, int mouseY) {
+    private void renderConfirmDialog(GuiGraphicsExtractor ctx, int mouseX, int mouseY) {
         ctx.fill(0, 0, this.width, this.height, 0x88000000);
 
         int cx = (this.width - CONFIRM_W) / 2;
@@ -304,8 +304,8 @@ public class ProxyBrowserScreen extends Screen {
         ctx.fill(cx, cy, cx + CONFIRM_W, cy + CONFIRM_H, 0xFF1A1A1A);
 
         String label = pendingDelete.name.isEmpty() ? pendingDelete.address : pendingDelete.name;
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("Delete " + truncate(label, 20) + "?"),
+        Gfx.centeredShadow(ctx, this.font,
+                Component.literal("Delete " + truncate(label, 20) + "?"),
                 this.width / 2, cy + 8, 0xFFFFAAAA);
 
         int btnW = 60;
@@ -317,7 +317,7 @@ public class ProxyBrowserScreen extends Screen {
         drawBtn(ctx, mouseX, mouseY, noX,  btnY, btnW, BH, "No",  true);
     }
 
-    private void renderRow(DrawContext ctx, ProxyEntry entry,
+    private void renderRow(GuiGraphicsExtractor ctx, ProxyEntry entry,
                            int x, int y, int w, int h,
                            int mouseX, int mouseY,
                            boolean hovered, boolean active, boolean editing) {
@@ -350,9 +350,9 @@ public class ProxyBrowserScreen extends Screen {
         int tx = x + 2;
 
         if (active) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("\u25C9 ").styled(s -> s.withColor(0x55FF55)), tx, lY1, 0xFF55FF55);
-            tx += this.textRenderer.getWidth("\u25C9 ");
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal("\u25C9 ").withStyle(s -> s.withColor(0x55FF55)), tx, lY1, 0xFF55FF55);
+            tx += this.font.width("\u25C9 ");
         }
 
         // Name (or address if no name)
@@ -364,67 +364,67 @@ public class ProxyBrowserScreen extends Screen {
         else if (active)                                                 nameColor = 0xFF55FF55;
         else                                                             nameColor = 0xFFFFFFFF;
 
-        ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(displayName).styled(s -> s.withColor(nameColor)), tx, lY1, nameColor);
-        tx += this.textRenderer.getWidth(displayName) + 8;
+        Gfx.textShadow(ctx, this.font,
+                Component.literal(displayName).withStyle(s -> s.withColor(nameColor)), tx, lY1, nameColor);
+        tx += this.font.width(displayName) + 8;
 
         // Address (if name is set, show address separately)
         if (!entry.name.isEmpty() && tx < cx - 60) {
             String addrStr = entry.address;
             if (addrStr.length() > 21) addrStr = addrStr.substring(0, 19) + "..";
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(addrStr).styled(s -> s.withColor(0xAAAAAA)), tx, lY1, 0xFFAAAAAA);
-            tx += this.textRenderer.getWidth(addrStr) + 8;
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(addrStr).withStyle(s -> s.withColor(0xAAAAAA)), tx, lY1, 0xFFAAAAAA);
+            tx += this.font.width(addrStr) + 8;
         }
 
         // Username indicator
         if (!entry.username.isEmpty() && tx < cx - 40) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("@" + entry.username).styled(s -> s.withColor(0x8888FF)),
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal("@" + entry.username).withStyle(s -> s.withColor(0x8888FF)),
                     tx, lY1, 0xFF8888FF);
         }
 
         // Line 2: protocol + last connected + error
         tx = x + 2;
-        if (active) tx += this.textRenderer.getWidth("\u25C9 ");
+        if (active) tx += this.font.width("\u25C9 ");
 
         // Protocol badge
         if (entry.lastType != ProxyManager.ProxyType.NONE) {
             String proto = entry.lastType.displayName();
             int protoColor = 0xFF55AAFF;
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(proto).styled(s -> s.withColor(protoColor)), tx, lY2, protoColor);
-            tx += this.textRenderer.getWidth(proto) + 6;
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(proto).withStyle(s -> s.withColor(protoColor)), tx, lY2, protoColor);
+            tx += this.font.width(proto) + 6;
         }
 
         // Last connected
         if (entry.lastConnected > 0 && tx < cx - 40) {
             long ago = System.currentTimeMillis() / 1000L - entry.lastConnected;
             String agoStr = ago < 0 ? "just now" : fmt(ago) + " ago";
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(agoStr).styled(s -> s.withColor(0x888888)), tx, lY2, 0xFF888888);
-            tx += this.textRenderer.getWidth(agoStr) + 6;
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(agoStr).withStyle(s -> s.withColor(0x888888)), tx, lY2, 0xFF888888);
+            tx += this.font.width(agoStr) + 6;
         } else if (entry.lastConnected == 0 && entry.connectState == ProxyEntry.ConnectState.IDLE) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("Never tested").styled(s -> s.withColor(0x666666)), tx, lY2, 0xFF666666);
-            tx += this.textRenderer.getWidth("Never tested") + 6;
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal("Never tested").withStyle(s -> s.withColor(0x666666)), tx, lY2, 0xFF666666);
+            tx += this.font.width("Never tested") + 6;
         }
 
         // Connect state / error
         if (entry.connectState == ProxyEntry.ConnectState.CONNECTING) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("Testing...").styled(s -> s.withColor(0xFFAA00)), tx, lY2, 0xFFFFAA00);
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal("Testing...").withStyle(s -> s.withColor(0xFFAA00)), tx, lY2, 0xFFFFAA00);
         } else if (entry.connectState == ProxyEntry.ConnectState.FAILED && !entry.connectError.isEmpty()) {
             String err = truncate(entry.connectError, 30);
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("X " + err).styled(s -> s.withColor(0xFF5555)), tx, lY2, 0xFFFF5555);
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal("X " + err).withStyle(s -> s.withColor(0xFF5555)), tx, lY2, 0xFFFF5555);
         } else if (entry.connectState == ProxyEntry.ConnectState.SUCCESS) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal("Connected").styled(s -> s.withColor(0x55FF55)), tx, lY2, 0xFF55FF55);
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal("Connected").withStyle(s -> s.withColor(0x55FF55)), tx, lY2, 0xFF55FF55);
         }
     }
 
-    private void drawBtn(DrawContext ctx, int mouseX, int mouseY,
+    private void drawBtn(GuiGraphicsExtractor ctx, int mouseX, int mouseY,
                          int bx, int by, int bw, int bh,
                          String label, boolean active) {
         boolean over = active
@@ -435,8 +435,8 @@ public class ProxyBrowserScreen extends Screen {
         int fg     = !active ? 0xFF888888 : 0xFFFFFFFF;
         ctx.fill(bx, by, bx + bw, by + bh, border);
         ctx.fill(bx + 1, by + 1, bx + bw - 1, by + bh - 1, bg);
-        int tw = this.textRenderer.getWidth(label);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal(label),
+        int tw = this.font.width(label);
+        Gfx.textShadow(ctx, this.font, Component.literal(label),
                 bx + (bw - tw) / 2, by + (bh - 8) / 2, fg);
     }
 
@@ -465,7 +465,7 @@ public class ProxyBrowserScreen extends Screen {
         if (my >= this.height - FOOTER_H) return;  // footer handles its own widgets
 
         if (backButton != null && hitWidget(backButton, mx, my)) {
-            this.client.setScreen(parent);
+            this.minecraft.setScreenAndShow(parent);
             return;
         }
         if (addNewButton != null && hitWidget(addNewButton, mx, my)) {
@@ -500,7 +500,7 @@ public class ProxyBrowserScreen extends Screen {
         }
     }
 
-    private static boolean hitWidget(ButtonWidget w, double mx, double my) {
+    private static boolean hitWidget(Button w, double mx, double my) {
         return mx >= w.getX() && mx < w.getX() + w.getWidth()
                 && my >= w.getY() && my < w.getY() + w.getHeight();
     }
@@ -519,13 +519,13 @@ public class ProxyBrowserScreen extends Screen {
 
     private void doConnect(ProxyEntry entry) {
         // Go back to multiplayer screen and trigger connect from there
-        this.client.setScreen(parent);
+        this.minecraft.setScreenAndShow(parent);
         onConnectNow.accept(entry);
     }
 
     private void doSelectAndBack(ProxyEntry entry) {
         if (onSelect != null) onSelect.accept(entry);
-        this.client.setScreen(parent);
+        this.minecraft.setScreenAndShow(parent);
     }
 
     private void doDelete(ProxyEntry entry) {
@@ -537,10 +537,10 @@ public class ProxyBrowserScreen extends Screen {
         String label = pendingDelete.name.isEmpty() ? pendingDelete.address : pendingDelete.name;
         if (editingEntry == pendingDelete) {
             editingEntry = null;
-            nameField.setText("");
-            addressField.setText("");
-            userField.setText("");
-            passField.setText("");
+            nameField.setValue("");
+            addressField.setValue("");
+            userField.setValue("");
+            passField.setValue("");
         }
         ProxyConfig.removeProxy(pendingDelete);
         setStatus(label + " removed. " + ProxyConfig.getProxies().size() + " remaining.", 0xFFAAAAAA);

@@ -1,12 +1,12 @@
 package dev.tokenlogin.client;
 
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,8 +47,8 @@ public class PrismBrowserScreen extends Screen {
 
     private final List<AccountEntry> prismAccounts = new CopyOnWriteArrayList<>();
 
-    private ButtonWidget reloadButton;
-    private ButtonWidget backButton;
+    private Button reloadButton;
+    private Button backButton;
 
     private String statusText  = "";
     private int    statusColor = 0xFFAAAAAA;
@@ -60,16 +60,16 @@ public class PrismBrowserScreen extends Screen {
     private AccountEntry bindingAccount = null;
 
     private AccountEntry    selectedAccount = null;
-    private TextFieldWidget notesField;
+    private EditBox notesField;
 
     // ── Search ────────────────────────────────────────────────────────────────
-    private TextFieldWidget searchField;
+    private EditBox searchField;
     private String          searchQuery = "";
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public PrismBrowserScreen(Screen parent, Screen loginTargetScreen, Consumer<AccountEntry> onLoginNow) {
-        super(Text.literal("My Accounts"));
+        super(Component.literal("My Accounts"));
         this.parent            = parent;
         this.loginTargetScreen = loginTargetScreen;
         this.onLoginNow        = onLoginNow;
@@ -109,46 +109,46 @@ public class PrismBrowserScreen extends Screen {
 
     @Override
     protected void init() {
-        backButton = ButtonWidget.builder(
-                Text.literal("< Back"),
-                btn -> this.client.setScreen(parent)
-        ).dimensions(4, 3, 50, 16).build();
-        this.addDrawableChild(backButton);
+        backButton = Button.builder(
+                Component.literal("< Back"),
+                btn -> this.minecraft.setScreenAndShow(parent)
+        ).bounds(4, 3, 50, 16).build();
+        this.addRenderableWidget(backButton);
 
-        reloadButton = ButtonWidget.builder(
-                Text.literal("Reload"),
+        reloadButton = Button.builder(
+                Component.literal("Reload"),
                 btn -> triggerReload(false)
-        ).dimensions(this.width - 58, 3, 54, 16).build();
-        this.addDrawableChild(reloadButton);
+        ).bounds(this.width - 58, 3, 54, 16).build();
+        this.addRenderableWidget(reloadButton);
 
-        this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("Manual Refresh"),
-                btn -> this.client.setScreen(
+        this.addRenderableWidget(Button.builder(
+                Component.literal("Manual Refresh"),
+                btn -> this.minecraft.setScreenAndShow(
                         new ManualRefreshScreen(this))
-        ).dimensions(this.width - 150, 3, 88, 16).build());
+        ).bounds(this.width - 150, 3, 88, 16).build());
 
         // ── Search field (centered in header) ─────────────────────────────────
         int searchW = Math.min(200, this.width - 180);
         int searchX = (this.width - searchW) / 2;
-        searchField = new TextFieldWidget(
-                this.textRenderer, searchX, 3, searchW, 16,
-                Text.literal("Search"));
+        searchField = new EditBox(
+                this.font, searchX, 3, searchW, 16,
+                Component.literal("Search"));
         searchField.setMaxLength(64);
-        searchField.setPlaceholder(Text.literal("Search accounts..."));
-        searchField.setChangedListener(this::onSearchChanged);
-        this.addDrawableChild(searchField);
+        searchField.setHint(Component.literal("Search accounts..."));
+        searchField.setResponder(this::onSearchChanged);
+        this.addRenderableWidget(searchField);
 
         // ── Notes field (bottom bar) ──────────────────────────────────────────
         int notesY = this.height - FOOTER_H + 2;
         int notesW = this.width - 8;
-        notesField = new TextFieldWidget(
-                this.textRenderer, 4, notesY, notesW, 14,
-                Text.literal("Notes"));
+        notesField = new EditBox(
+                this.font, 4, notesY, notesW, 14,
+                Component.literal("Notes"));
         notesField.setMaxLength(256);
-        notesField.setPlaceholder(Text.literal("Click a row to edit notes..."));
+        notesField.setHint(Component.literal("Click a row to edit notes..."));
         notesField.active = false;
-        notesField.setChangedListener(this::onNotesChanged);
-        this.addDrawableChild(notesField);
+        notesField.setResponder(this::onNotesChanged);
+        this.addRenderableWidget(notesField);
 
         if (!initialLoadDone) {
             initialLoadDone = true;
@@ -190,14 +190,14 @@ public class PrismBrowserScreen extends Screen {
         if (selectedAccount == acc) {
             selectedAccount = null;
             notesField.active = false;
-            notesField.setText("");
-            notesField.setPlaceholder(Text.literal("Click a row to edit notes..."));
+            notesField.setValue("");
+            notesField.setHint(Component.literal("Click a row to edit notes..."));
             return;
         }
         selectedAccount = acc;
         notesField.active = true;
-        notesField.setText(acc.notes != null ? acc.notes : "");
-        notesField.setPlaceholder(Text.literal("Add notes for " + acc.username + "..."));
+        notesField.setValue(acc.notes != null ? acc.notes : "");
+        notesField.setHint(Component.literal("Add notes for " + acc.username + "..."));
     }
 
     // ── Load ──────────────────────────────────────────────────────────────────
@@ -211,13 +211,13 @@ public class PrismBrowserScreen extends Screen {
             List<AccountEntry> loaded = new ArrayList<>();
 
             if (accountsJson == null || !Files.exists(accountsJson)) {
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     prismAccounts.clear();
                     setStatus("PrismLauncher accounts.json not found", 0xFFFF5555);
                     reloadButton.active = true;
                     selectedAccount = null;
                     notesField.active = false;
-                    notesField.setText("");
+                    notesField.setValue("");
                 });
                 return;
             }
@@ -237,7 +237,7 @@ public class PrismBrowserScreen extends Screen {
             }
 
             List<AccountEntry> finalLoaded = loaded;
-            this.client.execute(() -> {
+            this.minecraft.execute(() -> {
                 prismAccounts.clear();
                 prismAccounts.addAll(finalLoaded);
                 int n = prismAccounts.size();
@@ -249,7 +249,7 @@ public class PrismBrowserScreen extends Screen {
                 reloadButton.active = true;
                 selectedAccount = null;
                 notesField.active = false;
-                notesField.setText("");
+                notesField.setValue("");
             });
         }, "TokenLogin-PrismReload");
         t.setDaemon(true);
@@ -259,7 +259,7 @@ public class PrismBrowserScreen extends Screen {
     // ── Render ────────────────────────────────────────────────────────────────
 
     @Override
-    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         ctx.fill(0, 0, this.width, this.height, 0xC0101010);
 
         // Header
@@ -315,20 +315,20 @@ public class PrismBrowserScreen extends Screen {
             int shown = accounts.size();
             String matchText = shown + "/" + total + " matches";
             int matchColor = shown == 0 ? 0xFFFF5555 : 0xFF55FFFF;
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(matchText),
-                    this.width - this.textRenderer.getWidth(matchText) - 6,
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(matchText),
+                    this.width - this.font.width(matchText) - 6,
                     this.height - FOOTER_H + 20, matchColor);
         }
 
         if (!statusText.isEmpty()) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(statusText), 4, this.height - FOOTER_H + 20, statusColor);
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(statusText), 4, this.height - FOOTER_H + 20, statusColor);
         }
 
         for (var element : this.children()) {
-            if (element instanceof Drawable drawable) {
-                drawable.render(ctx, mouseX, mouseY, delta);
+            if (element instanceof Renderable drawable) {
+                drawable.extractRenderState(ctx, mouseX, mouseY, delta);
             }
         }
 
@@ -353,7 +353,7 @@ public class PrismBrowserScreen extends Screen {
         return result;
     }
 
-    private void renderProxyPicker(DrawContext ctx, int mouseX, int mouseY) {
+    private void renderProxyPicker(GuiGraphicsExtractor ctx, int mouseX, int mouseY) {
         List<ProxyEntry> proxies = getAvailableProxies();
         int rows    = Math.max(1, proxies.size());
         int pickerH = PICKER_PAD + rows * PICKER_ROW_H + PICKER_PAD;
@@ -369,11 +369,11 @@ public class PrismBrowserScreen extends Screen {
 
         // Title
         String title = "Bind proxy: " + truncate(bindingAccount.username, 16);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal(title),
+        Gfx.textShadow(ctx, this.font, Component.literal(title),
                 px + PICKER_PAD, py - 11, 0xFFAAAAAA);
 
         if (proxies.isEmpty()) {
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal("No proxies available"),
+            Gfx.textShadow(ctx, this.font, Component.literal("No proxies available"),
                     px + PICKER_PAD, py + PICKER_PAD, 0xFF888888);
             return;
         }
@@ -384,13 +384,13 @@ public class PrismBrowserScreen extends Screen {
                          && mouseY >= ry && mouseY < ry + PICKER_ROW_H;
             ctx.fill(px, ry, px + PICKER_W, ry + PICKER_ROW_H, hover ? 0xFF2A2A2A : 0xFF1A1A1A);
             String label = proxy.name.isBlank() ? proxy.address : proxy.name + "  " + proxy.address;
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(truncate(label, 28)), px + PICKER_PAD, ry + (PICKER_ROW_H - 8) / 2, 0xFFCCCCCC);
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(truncate(label, 28)), px + PICKER_PAD, ry + (PICKER_ROW_H - 8) / 2, 0xFFCCCCCC);
             ry += PICKER_ROW_H;
         }
     }
 
-    private void renderRow(DrawContext ctx, AccountEntry acc,
+    private void renderRow(GuiGraphicsExtractor ctx, AccountEntry acc,
                            int x, int y, int w, int h,
                            int mouseX, int mouseY, boolean hovered, boolean selected) {
         if (selected)     ctx.fill(x, y, x + w, y + h, 0x33FFFF55);
@@ -428,9 +428,9 @@ public class PrismBrowserScreen extends Screen {
         // Badge
         String badge = "[" + acc.badge() + "]";
         int    bc    = acc.badgeColor();
-        ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(badge).styled(s -> s.withColor(bc)), x + 2, lY1, bc);
-        int bw = this.textRenderer.getWidth(badge) + 4;
+        Gfx.textShadow(ctx, this.font,
+                Component.literal(badge).withStyle(s -> s.withColor(bc)), x + 2, lY1, bc);
+        int bw = this.font.width(badge) + 4;
 
         // Username with search highlight
         int    nc   = nameColor(acc);
@@ -444,41 +444,41 @@ public class PrismBrowserScreen extends Screen {
                 int nameX = x + 2 + bw;
                 String prefix = name.substring(0, matchIdx);
                 if (!prefix.isEmpty()) {
-                    ctx.drawTextWithShadow(this.textRenderer,
-                            Text.literal(prefix).styled(s -> s.withColor(nc)), nameX, lY1, nc);
-                    nameX += this.textRenderer.getWidth(prefix);
+                    Gfx.textShadow(ctx, this.font,
+                            Component.literal(prefix).withStyle(s -> s.withColor(nc)), nameX, lY1, nc);
+                    nameX += this.font.width(prefix);
                 }
                 String match = name.substring(matchIdx, Math.min(matchIdx + searchQuery.length(), name.length()));
-                ctx.drawTextWithShadow(this.textRenderer,
-                        Text.literal(match).styled(s -> s.withColor(0xFFFF55)), nameX, lY1, 0xFFFFFF55);
-                nameX += this.textRenderer.getWidth(match);
+                Gfx.textShadow(ctx, this.font,
+                        Component.literal(match).withStyle(s -> s.withColor(0xFFFF55)), nameX, lY1, 0xFFFFFF55);
+                nameX += this.font.width(match);
                 String suffix = name.substring(Math.min(matchIdx + searchQuery.length(), name.length()));
                 if (!suffix.isEmpty()) {
-                    ctx.drawTextWithShadow(this.textRenderer,
-                            Text.literal(suffix).styled(s -> s.withColor(nc)), nameX, lY1, nc);
+                    Gfx.textShadow(ctx, this.font,
+                            Component.literal(suffix).withStyle(s -> s.withColor(nc)), nameX, lY1, nc);
                 }
             } else {
-                ctx.drawTextWithShadow(this.textRenderer,
-                        Text.literal(name).styled(s -> s.withColor(nc)), x + 2 + bw, lY1, nc);
+                Gfx.textShadow(ctx, this.font,
+                        Component.literal(name).withStyle(s -> s.withColor(nc)), x + 2 + bw, lY1, nc);
             }
         } else {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(name).styled(s -> s.withColor(nc)), x + 2 + bw, lY1, nc);
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(name).withStyle(s -> s.withColor(nc)), x + 2 + bw, lY1, nc);
         }
 
-        int nameEnd = x + 2 + bw + this.textRenderer.getWidth(name) + 6;
+        int nameEnd = x + 2 + bw + this.font.width(name) + 6;
 
         // Notes
         if (acc.notes != null && !acc.notes.isBlank()) {
             int maxNotesW = rx - nameEnd - 8;
             if (maxNotesW > 20) {
                 String noteStr = acc.notes;
-                while (this.textRenderer.getWidth(noteStr) > maxNotesW && noteStr.length() > 1) {
+                while (this.font.width(noteStr) > maxNotesW && noteStr.length() > 1) {
                     noteStr = noteStr.substring(0, noteStr.length() - 1);
                 }
                 if (noteStr.length() < acc.notes.length()) noteStr += "..";
-                ctx.drawTextWithShadow(this.textRenderer,
-                        Text.literal(noteStr).styled(s -> s.withColor(0x999999)),
+                Gfx.textShadow(ctx, this.font,
+                        Component.literal(noteStr).withStyle(s -> s.withColor(0x999999)),
                         nameEnd, lY1, 0xFF999999);
             }
         }
@@ -487,30 +487,30 @@ public class PrismBrowserScreen extends Screen {
         int tx = x + 2;
         String jwtStr = jwtString(acc);
         int    jwtCol = jwtColor(acc);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal(jwtStr), tx, lY2, jwtCol);
-        tx += this.textRenderer.getWidth(jwtStr) + 8;
+        Gfx.textShadow(ctx, this.font, Component.literal(jwtStr), tx, lY2, jwtCol);
+        tx += this.font.width(jwtStr) + 8;
 
         if (tx < bndx - 30) {
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal("|"), tx, lY2, 0xFF444444);
-            tx += this.textRenderer.getWidth("| ") + 2;
+            Gfx.textShadow(ctx, this.font, Component.literal("|"), tx, lY2, 0xFF444444);
+            tx += this.font.width("| ") + 2;
         }
         if (tx < bndx - 4) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(refreshString(acc)), tx, lY2, refreshColor(acc));
-            tx += this.textRenderer.getWidth(refreshString(acc)) + 8;
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(refreshString(acc)), tx, lY2, refreshColor(acc));
+            tx += this.font.width(refreshString(acc)) + 8;
         }
 
         // Proxy binding indicator
         if (acc.boundProxyAddress != null && !acc.boundProxyAddress.isBlank() && tx < bndx - 4) {
-            ctx.drawTextWithShadow(this.textRenderer, Text.literal("|"), tx, lY2, 0xFF444444);
-            tx += this.textRenderer.getWidth("| ") + 2;
+            Gfx.textShadow(ctx, this.font, Component.literal("|"), tx, lY2, 0xFF444444);
+            tx += this.font.width("| ") + 2;
             String proxyLabel = "→ " + truncate(acc.boundProxyAddress, 24);
-            ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(proxyLabel).styled(s -> s.withColor(0xFF55FFFF)), tx, lY2, 0xFF55FFFF);
+            Gfx.textShadow(ctx, this.font,
+                    Component.literal(proxyLabel).withStyle(s -> s.withColor(0xFF55FFFF)), tx, lY2, 0xFF55FFFF);
         }
     }
 
-    private void drawBtn(DrawContext ctx, int mouseX, int mouseY,
+    private void drawBtn(GuiGraphicsExtractor ctx, int mouseX, int mouseY,
                          int bx, int by, int bw, int bh,
                          String label, boolean active) {
         boolean over = active
@@ -521,12 +521,12 @@ public class PrismBrowserScreen extends Screen {
         int fg     = !active ? 0xFF888888 : 0xFFFFFFFF;
         ctx.fill(bx, by, bx + bw, by + bh, border);
         ctx.fill(bx + 1, by + 1, bx + bw - 1, by + bh - 1, bg);
-        int tw = this.textRenderer.getWidth(label);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal(label),
+        int tw = this.font.width(label);
+        Gfx.textShadow(ctx, this.font, Component.literal(label),
                 bx + (bw - tw) / 2, by + (bh - 8) / 2, fg);
     }
 
-    private void drawBtnColored(DrawContext ctx, int mouseX, int mouseY,
+    private void drawBtnColored(GuiGraphicsExtractor ctx, int mouseX, int mouseY,
                                  int bx, int by, int bw, int bh,
                                  String label, boolean active, int fg, int bgOverride) {
         boolean over = active
@@ -536,8 +536,8 @@ public class PrismBrowserScreen extends Screen {
         int bg     = over ? 0xFF337799 : bgOverride;
         ctx.fill(bx, by, bx + bw, by + bh, border);
         ctx.fill(bx + 1, by + 1, bx + bw - 1, by + bh - 1, bg);
-        int tw = this.textRenderer.getWidth(label);
-        ctx.drawTextWithShadow(this.textRenderer, Text.literal(label),
+        int tw = this.font.width(label);
+        Gfx.textShadow(ctx, this.font, Component.literal(label),
                 bx + (bw - tw) / 2, by + (bh - 8) / 2, fg);
     }
 
@@ -628,13 +628,13 @@ public class PrismBrowserScreen extends Screen {
         Thread t = new Thread(() -> {
             try {
                 AccountManager.refreshAccount(acc, proxy);
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     acc.refreshState = AccountEntry.RefreshState.SUCCESS;
                     setStatus("Refreshed: " + acc.username, 0xFF55FF55);
                 });
             } catch (Exception e) {
                 TokenLoginClient.LOGGER.warn("Refresh failed [{}]: {}", acc.username, e.getMessage());
-                this.client.execute(() -> {
+                this.minecraft.execute(() -> {
                     acc.refreshState = AccountEntry.RefreshState.FAILED;
                     acc.refreshError = e.getMessage() != null ? e.getMessage() : "Unknown error";
                     setStatus("Refresh failed: " + acc.refreshError, 0xFFFF5555);
@@ -646,12 +646,12 @@ public class PrismBrowserScreen extends Screen {
     }
 
     private void doLoginNow(AccountEntry acc) {
-        this.client.setScreen(loginTargetScreen);
+        this.minecraft.setScreenAndShow(loginTargetScreen);
         onLoginNow.accept(acc);
     }
 
     private void doCopy(AccountEntry acc) {
-        this.client.keyboard.setClipboard(acc.minecraftToken);
+        this.minecraft.keyboardHandler.setClipboard(acc.minecraftToken);
         setStatus("Token copied — " + acc.username, 0xFF55FF55);
     }
 
@@ -671,7 +671,7 @@ public class PrismBrowserScreen extends Screen {
         if (selectedAccount == acc) {
             selectedAccount   = null;
             notesField.active = false;
-            notesField.setText("");
+            notesField.setValue("");
         }
         prismAccounts.remove(acc);
         AccountStorage.markDead(acc);

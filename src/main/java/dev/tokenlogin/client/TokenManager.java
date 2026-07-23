@@ -4,8 +4,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.session.Session;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.User;
 import dev.tokenlogin.mixin.MinecraftClientAccessor;
 
 import java.io.InputStream;
@@ -148,7 +148,7 @@ public class TokenManager {
      * Must be called after a successful authenticate() call.
      */
     public static void applySession(SessionInfo info, String rawToken) {
-        Session newSession = new Session(
+        User newSession = new User(
                 info.username(),
                 info.uuid(),
                 rawToken,
@@ -156,7 +156,7 @@ public class TokenManager {
                 Optional.empty()
         );
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         ((MinecraftClientAccessor) client).tokenlogin$setSession(newSession);
 
         TokenLoginClient.LOGGER.info(

@@ -2,7 +2,7 @@ package dev.tokenlogin.client;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -10,9 +10,8 @@ import org.lwjgl.glfw.GLFW;
  *
  * When the game chains straight from one inventory/container screen into another
  * (e.g. clicking through Hypixel menus, which closes the old GUI and opens a new
- * one back-to-back), vanilla {@code Mouse.unlockCursor()} recenters the mouse to
- * the middle of the window. This keeps the cursor where it was so menu navigation
- * stays put.
+ * one back-to-back), vanilla mouse unlock recenters the mouse to the middle of
+ * the window. This keeps the cursor where it was so menu navigation stays put.
  *
  * The position is only restored when the next screen opens immediately after the
  * previous one closed (within {@link #CHAIN_WINDOW_MS}); a fresh inventory opened
@@ -30,16 +29,16 @@ public class NoCursorReset {
     private static long   savedAt = 0L;
 
     /** Called when a handled screen is removed — remember where the cursor was. */
-    public static void save(MinecraftClient client) {
-        if (client == null || client.mouse == null) return;
-        savedX  = client.mouse.getX();
-        savedY  = client.mouse.getY();
+    public static void save(Minecraft client) {
+        if (client == null || client.mouseHandler == null) return;
+        savedX  = client.mouseHandler.xpos();
+        savedY  = client.mouseHandler.ypos();
         savedAt = System.currentTimeMillis();
     }
 
     /** Called when a handled screen finishes init — restore the cursor if this
      *  open chained straight off the previous close. */
-    public static void restore(MinecraftClient client) {
+    public static void restore(Minecraft client) {
         if (client == null || client.getWindow() == null) return;
 
         long when = savedAt;
@@ -48,6 +47,6 @@ public class NoCursorReset {
         if (System.currentTimeMillis() - when > CHAIN_WINDOW_MS) return;
         if (savedX < 0 || savedY < 0) return;
 
-        GLFW.glfwSetCursorPos(client.getWindow().getHandle(), savedX, savedY);
+        GLFW.glfwSetCursorPos(client.getWindow().handle(), savedX, savedY);
     }
 }

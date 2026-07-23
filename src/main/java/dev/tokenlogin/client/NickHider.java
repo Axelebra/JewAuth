@@ -2,12 +2,12 @@ package dev.tokenlogin.client;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.CharacterVisitor;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.util.FormattedCharSink;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,10 +15,10 @@ import java.util.Optional;
 
 /**
  * Client-side nick hider. Intercepts ALL text rendering to replace
- * the player's real name with a fake one. Never touches the Session.
+ * the player's real name with a fake one. Never touches the session.
  *
  * Provides replacement methods for all 3 text types Minecraft uses:
- * String, Text (component tree), and OrderedText (render-ready).
+ * String, Component (component tree), and FormattedCharSequence (render-ready).
  */
 @Environment(EnvType.CLIENT)
 public class NickHider {
@@ -43,8 +43,8 @@ public class NickHider {
             return;
         }
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        realName  = mc.getSession().getUsername();
+        Minecraft mc = Minecraft.getInstance();
+        realName  = mc.getUser().getName();
         fakeName  = newFakeName.trim();
         enabled   = true;
 
@@ -62,7 +62,7 @@ public class NickHider {
     }
 
     // =====================================================================
-    // String replacement (used by DrawContext.drawText(String) path)
+    // String replacement (used by the String text() path)
     // =====================================================================
 
     public static String replaceInString(String input) {
@@ -72,18 +72,18 @@ public class NickHider {
     }
 
     // =====================================================================
-    // Text replacement — uses visitor to preserve all styles/colors
+    // Component replacement — uses visitor to preserve all styles/colors
     // =====================================================================
 
-    public static Text replaceInText(Text input) {
+    public static Component replaceInText(Component input) {
         if (!isEnabled() || input == null || realName.isEmpty()) return input;
         if (!input.getString().contains(realName)) return input;
 
         // Walk the text tree; visitor gives us each leaf as (Style, String)
-        MutableText result = Text.empty();
+        MutableComponent result = Component.empty();
         input.visit((Style style, String content) -> {
             String replaced = content.replace(realName, fakeName);
-            result.append(Text.literal(replaced).setStyle(style));
+            result.append(Component.literal(replaced).setStyle(style));
             return Optional.empty();
         }, Style.EMPTY);
 
@@ -91,14 +91,14 @@ public class NickHider {
     }
 
     // =====================================================================
-    // OrderedText replacement — for scoreboard, tooltips, etc.
+    // FormattedCharSequence replacement — for scoreboard, tooltips, etc.
     //
     // Collects all (style, codepoint) pairs, builds the full string,
-    // does replacement, then rebuilds a new OrderedText with styles
+    // does replacement, then rebuilds a new FormattedCharSequence with styles
     // mapped to the correct positions.
     // =====================================================================
 
-    public static OrderedText replaceInOrdered(OrderedText input) {
+    public static FormattedCharSequence replaceInOrdered(FormattedCharSequence input) {
         if (!isEnabled() || input == null || realName.isEmpty()) return input;
 
         // Collect every character with its style
@@ -121,7 +121,7 @@ public class NickHider {
         // inherit the style of the first character of that occurrence.
         List<Style> newStyles = buildReplacedStyles(original, replaced, styles);
 
-        // Build a new OrderedText from the replaced string + styles
+        // Build a new FormattedCharSequence from the replaced string + styles
         return buildOrderedText(replaced, newStyles);
     }
 
@@ -174,10 +174,10 @@ public class NickHider {
     }
 
     /**
-     * Builds an OrderedText from a string + per-character styles.
+     * Builds a FormattedCharSequence from a string + per-character styles.
      */
-    private static OrderedText buildOrderedText(String text, List<Style> styles) {
-        return (CharacterVisitor visitor) -> {
+    private static FormattedCharSequence buildOrderedText(String text, List<Style> styles) {
+        return (FormattedCharSink visitor) -> {
             for (int i = 0; i < text.length(); i++) {
                 Style style = i < styles.size() ? styles.get(i) : Style.EMPTY;
                 if (!visitor.accept(i, style, text.codePointAt(i))) {
