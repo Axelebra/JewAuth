@@ -23,6 +23,7 @@ public class TokenLoginClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             SelfBan.tick();
             HoverLoot.tick(client);
+            NoCursorReset.tick(client);
             autoConnectProxy(client);
             clearButtonFocus(client);
         });
