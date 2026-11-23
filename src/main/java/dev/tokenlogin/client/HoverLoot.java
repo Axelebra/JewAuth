@@ -7,7 +7,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.inventory.ContainerInput;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
+import org.lwjgl.sdl.SDLMouse;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -42,10 +43,13 @@ public class HoverLoot {
             lastScreen = screen;
         }
 
-        long window = client.getWindow().handle();
-        boolean shiftHeld = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT)  == GLFW.GLFW_PRESS
-                         || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
-        boolean leftHeld  = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+        // 26.3 dropped GLFW for SDL. Key state comes from InputConstants, but the
+        // mouse button has to be read raw: MouseHandler.isLeftPressed() is only
+        // updated while no screen is open, and this whole feature runs inside a
+        // container screen, so it would always read false.
+        boolean shiftHeld = InputConstants.isKeyDown(InputConstants.KEY_LSHIFT)
+                         || InputConstants.isKeyDown(InputConstants.KEY_RSHIFT);
+        boolean leftHeld  = (SDLMouse.nSDL_GetMouseState(0L, 0L) & SDLMouse.SDL_BUTTON_LMASK) != 0;
         boolean active    = shiftHeld && leftHeld;
 
         // Convert raw mouse coords to GUI-scaled coords

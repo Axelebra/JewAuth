@@ -4,7 +4,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import com.mojang.blaze3d.platform.Window;
-import org.lwjgl.glfw.GLFW;
+import org.lwjgl.sdl.SDLMouse;
 
 /**
  * No Cursor Reset — always on, no toggle (like HoverLoot).
@@ -78,7 +78,7 @@ public class NoCursorReset {
         double x = clamp(savedX, window.getScreenWidth());
         double y = clamp(savedY, window.getScreenHeight());
 
-        GLFW.glfwSetCursorPos(window.handle(), x, y);
+        SDLMouse.SDL_WarpMouseInWindow(window.handle(), (float) x, (float) y);
         gameplayTicks = 0;
     }
 

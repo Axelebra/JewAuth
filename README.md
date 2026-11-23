@@ -1,6 +1,6 @@
-# JewAuth v1.5
+# JewAuth v1.7
 
-A client-side Fabric mod for **Minecraft 26.2**.
+A client-side Fabric mod for **Minecraft 26.3**.
 
 [Discord](https://discord.gg/jwbz)
 
@@ -32,13 +32,14 @@ A client-side Fabric mod for **Minecraft 26.2**.
 - **Name Changer** — Change your IGN via the Mojang API
 - **Nick Hider** — Client-side name replacement across chat, tab list, and scoreboard
 - **Hover Loot** — Hold shift+left-click and drag over inventory slots to shift-click them all
+- **Docked UI** — Every control lives in its own reserved band above and below the server list, never on top of the vanilla buttons; `Hide UI` folds the bands away
 - **Persistent Cache** — Refreshed tokens, notes, and Skyblock data survive restarts
 
 ## Installation
 
 > Requires **Java 25** or later.
 
-1. Install [Fabric Loader](https://fabricmc.net/) **0.19.3+** for Minecraft 26.2
+1. Install [Fabric Loader](https://fabricmc.net/) **0.19.5+** for Minecraft 26.3
 2. Install [Fabric API](https://modrinth.com/mod/fabric-api)
 3. Place the mod `.jar` in your `.minecraft/mods/` directory
 
@@ -49,6 +50,12 @@ A client-side Fabric mod for **Minecraft 26.2**.
 ```
 
 The finished jar lands in `build/libs/JewAuth-<version>-<mc-version>.jar`.
+
+To drop it straight into a launcher instance after every build, point Gradle at the mods folder:
+
+```sh
+./gradlew build -PmodsDir=/path/to/instance/minecraft/mods
+```
 
 Java 25 is required to build — point `JAVA_HOME` at a JDK 25 install if it isn't your default.
 

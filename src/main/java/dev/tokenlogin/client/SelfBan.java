@@ -20,7 +20,7 @@ import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.network.protocol.game.ServerboundPaddleBoatPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCreativeModeSlotPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.network.protocol.game.ServerboundPickItemFromEntityPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
@@ -28,6 +28,7 @@ import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerAbilitiesPacket;
+import net.minecraft.core.PositionAndRotation;
 import net.minecraft.network.protocol.game.ServerboundMoveVehiclePacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.core.BlockPos;
@@ -404,14 +405,14 @@ public final class SelfBan {
                 send(connection, new ServerboundInteractPacket(entity.getId(), InteractionHand.MAIN_HAND, entity.position(), player.isShiftKeyDown()));
             }
             if (budget-- > 0) {
-                send(connection, new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+                send(connection, ServerboundPunchPacket.INSTANCE);
             }
         }
     }
 
     private static void sendFastActions(ClientPacketListener connection, LocalPlayer player, int budget) {
         BlockPos farPos = player.blockPosition().offset(12, 6, 12);
-        if (budget-- > 0) send(connection, new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        if (budget-- > 0) send(connection, ServerboundPunchPacket.INSTANCE);
         if (budget-- > 0) send(connection, new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, farPos, Direction.UP, sequence++));
         if (budget-- > 0) send(connection, new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, farPos, Direction.UP, sequence++));
         if (budget-- > 0) send(connection, new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN, sequence++));
@@ -439,7 +440,8 @@ public final class SelfBan {
 
     private static void sendVehicleAnomalies(ClientPacketListener connection, LocalPlayer player, int budget) {
         Vec3 position = new Vec3(player.getX() + 20.0, player.getY() + 8.0, player.getZ() - 20.0);
-        if (budget-- > 0) send(connection, new ServerboundMoveVehiclePacket(position, player.getYRot() + 360.0F, -90.0F, false));
+        if (budget-- > 0) send(connection, new ServerboundMoveVehiclePacket(
+                PositionAndRotation.of(position, player.getYRot() + 360.0F, -90.0F), false));
         if (budget > 0) send(connection, new ServerboundPaddleBoatPacket(true, true));
     }
 

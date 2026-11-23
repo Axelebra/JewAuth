@@ -1,8 +1,10 @@
 package dev.tokenlogin.mixin;
 
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWImage;
+import org.lwjgl.sdl.SDLPixels;
+import org.lwjgl.sdl.SDLSurface;
+import org.lwjgl.sdl.SDLVideo;
+import org.lwjgl.sdl.SDL_Surface;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryUtil;
 import org.spongepowered.asm.mixin.Mixin;
@@ -24,7 +26,7 @@ public class WindowTitleMixin {
     @Inject(method = "updateTitle", at = @At("HEAD"), cancellable = true)
     private void overrideWindowTitle(CallbackInfo ci) {
         long windowHandle = Minecraft.getInstance().getWindow().handle();
-        GLFW.glfwSetWindowTitle(windowHandle, "JewAuth");
+        Minecraft.getInstance().getWindow().setTitle("JewAuth");
 
         if (!iconSet) {
             iconSet = true;
@@ -94,17 +96,18 @@ public class WindowTitleMixin {
             MemoryUtil.memFree(h);
             MemoryUtil.memFree(comp);
 
-            GLFWImage image = GLFWImage.malloc();
-            image.set(width, height, pixels);
-
-            GLFWImage.Buffer icons = GLFWImage.malloc(1);
-            icons.put(0, image);
-
-            GLFW.glfwSetWindowIcon(windowHandle, icons);
+            // SDL3 takes one surface rather than GLFW's image array. STB hands
+            // back RGBA bytes, which on a little-endian host is ABGR8888.
+            SDL_Surface surface = SDLSurface.SDL_CreateSurfaceFrom(
+                    width, height, SDLPixels.SDL_PIXELFORMAT_ABGR8888, pixels, width * 4);
+            if (surface == null) {
+                System.err.println("[JewAuth] SDL_CreateSurfaceFrom failed; icon not set");
+            } else {
+                SDLVideo.SDL_SetWindowIcon(windowHandle, surface);
+                SDLSurface.SDL_DestroySurface(surface);
+            }
 
             STBImage.stbi_image_free(pixels);
-            image.free();
-            icons.free();
 
             System.out.println("[JewAuth] Window icon set successfully!");
         } catch (Exception e) {

@@ -23,11 +23,11 @@ dependencies {
 
     // Netty proxy handlers (SOCKS4, SOCKS5, HTTP CONNECT)
     // These are NOT bundled with Minecraft's Netty — we JiJ them into the mod.
-    // Version must match the Netty version Minecraft 26.2 ships (netty 4.2.15.Final).
-    implementation "io.netty:netty-handler-proxy:4.2.15.Final"
-    include       "io.netty:netty-handler-proxy:4.2.15.Final"
-    implementation "io.netty:netty-codec-socks:4.2.15.Final"
-    include       "io.netty:netty-codec-socks:4.2.15.Final"
+    // Version must match the Netty version Minecraft 26.3 ships (netty 4.2.16.Final).
+    implementation "io.netty:netty-handler-proxy:4.2.16.Final"
+    include       "io.netty:netty-handler-proxy:4.2.16.Final"
+    implementation "io.netty:netty-codec-socks:4.2.16.Final"
+    include       "io.netty:netty-codec-socks:4.2.16.Final"
 }
 
 processResources {
@@ -55,3 +55,34 @@ jar {
         rename { "${it}_${project.archives_base_name}" }
     }
 }
+
+// Install the finished jar straight into the local Prism instance, so `./gradlew
+// build` is all it takes for the change to be in the game on the next restart.
+// Opt in with -PmodsDir=/path/to/instance/minecraft/mods (or the JEWAUTH_MODS_DIR
+// environment variable); skipped entirely when neither is set or the directory
+// does not exist, so a plain `./gradlew build` works anywhere.
+//
+// Always by atomic rename, never a plain copy: a running instance has this jar
+// OPEN, and rewriting it in place corrupts it under the live JVM — MC dies with
+// a ZipException the next time it loads a class it hasn't touched yet. `mv`
+// within one filesystem only swaps the directory entry, so the running game
+// keeps reading the old inode and the new jar is the one that loads next start.
+def modsDirPath = project.findProperty('modsDir') ?: System.getenv('JEWAUTH_MODS_DIR')
+
+tasks.register('installMod') {
+    dependsOn tasks.named('jar')
+    onlyIf { modsDirPath && file(modsDirPath).isDirectory() }
+    doLast {
+        def mods  = file(modsDirPath)
+        def built = tasks.named('jar').get().archiveFile.get().asFile
+        def dest  = new File(mods, built.name)
+        def tmp   = new File(mods, ".${built.name}.new")
+        tmp.bytes = built.bytes
+        java.nio.file.Files.move(tmp.toPath(), dest.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+        println "installed -> ${dest} (live-safe; active on next restart)"
+    }
+}
+
+tasks.named('build') { finalizedBy tasks.named('installMod') }
