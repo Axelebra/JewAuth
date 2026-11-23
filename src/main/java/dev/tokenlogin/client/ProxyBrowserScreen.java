@@ -1,5 +1,6 @@
 package dev.tokenlogin.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
@@ -443,7 +444,10 @@ public class ProxyBrowserScreen extends Screen {
     // ── Input ─────────────────────────────────────────────────────────────────
 
     private void tokenlogin$handleClick(double mx, double my, int button) {
-        if (button != 0) return;
+        // Left button only. The number is version-dependent: GLFW said 0, SDL3
+        // (26.3+) says 1 — so read it from InputConstants instead of hardcoding,
+        // or every click on this screen is silently dropped.
+        if (button != InputConstants.MOUSE_BUTTON_LEFT) return;
 
         // Confirmation dialog intercept
         if (pendingDelete != null) {

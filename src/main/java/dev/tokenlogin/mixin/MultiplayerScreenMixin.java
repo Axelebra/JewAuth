@@ -20,13 +20,19 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.User;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractStringWidget;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.layouts.HeaderAndFooterLayout;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
 import net.minecraft.network.chat.Component;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -90,6 +96,67 @@ public abstract class MultiplayerScreenMixin extends Screen {
     protected MultiplayerScreenMixin(Component title) { super(title); }
 
     // =====================================================================
+    // Layout
+    //
+    // The vanilla screen owns the whole window: a 33px header band with the
+    // title, the server list, and a 60px footer band holding the two rows of
+    // vanilla buttons (centred, 308px wide).  Absolute-positioned widgets in
+    // the corners therefore land *on top of* the vanilla buttons at anything
+    // but a very wide window — and since vanilla's widgets are registered
+    // first, they swallow every click, so ours look dead.
+    //
+    // Instead we reserve two bands from the layout itself (header grows by
+    // tokenlogin$topBand, footer by tokenlogin$botBand) and pull the vanilla
+    // content back to the edges, so the server list shrinks and our rows get
+    // space nothing else draws in.  "Hide UI" gives the bands back.
+    // =====================================================================
+
+    @Shadow @Final private HeaderAndFooterLayout layout;
+
+    @Unique private static final int TL_ROW_H    = 14;
+    @Unique private static final int TL_GAP      = 2;
+    @Unique private static final int TL_PAD      = 4;
+    @Unique private static final int TL_TEXT_H   = 10;
+    @Unique private static final int TL_CLUSTER_GAP = 8;
+
+    // bottom band clusters
+    @Unique private static final int TL_TOKEN_W   = 100;
+    @Unique private static final int TL_LOGIN_W   = 40;
+    @Unique private static final int TL_RESTORE_W = 46;
+    @Unique private static final int TL_BROWSE_W  = 44;
+    @Unique private static final int TL_AUTOREC_W = 72;
+    @Unique private static final int TL_SELFBAN_W = 72;
+
+    // top band clusters
+    @Unique private static final int TL_NAME_W    = 110;
+    @Unique private static final int TL_CHANGE_W  = 46;
+    @Unique private static final int TL_MODE_W    = 32;
+    @Unique private static final int TL_ADDR_W    = 110;
+    @Unique private static final int TL_CONNECT_W = 48;
+    @Unique private static final int TL_PBROWSE_W = 44;
+
+    @Unique private static final int TL_TOGGLE_W  = 52;
+
+    @Unique private static final int TL_VANILLA_HEADER = 33;
+    @Unique private static final int TL_VANILLA_FOOTER = 60;
+
+    @Unique private static boolean tokenlogin$uiHidden = false;
+
+    @Unique private Button tokenlogin$toggleButton;
+
+    @Unique private final java.util.List<AbstractWidget> tokenlogin$ourWidgets = new java.util.ArrayList<>();
+
+    @Unique private int     tokenlogin$topBand;
+    @Unique private int     tokenlogin$botBand;
+    @Unique private boolean tokenlogin$stackTop;
+    @Unique private boolean tokenlogin$stackBottom;
+
+    // text anchors, filled in by tokenlogin$layoutWidgets
+    @Unique private int tokenlogin$nameStatusY;
+    @Unique private int tokenlogin$proxyStatusY;
+    @Unique private int tokenlogin$infoY;
+
+    // =====================================================================
     // init
     // =====================================================================
 
@@ -102,187 +169,286 @@ public abstract class MultiplayerScreenMixin extends Screen {
             tokenlogin$originalSession = this.minecraft.getUser();
         }
 
-        int h          = 14;
-        int fieldWidth = 120;
-        int loginW     = 44;
-        int restoreW   = 50;
-        int browseW    = 48;
-        int gap        = 2;
+        tokenlogin$ourWidgets.clear();
 
-        // ── Token login row (bottom-left) ────────────────────────────────────
-        int x = 4;
-        int y = this.height - h - 2;
+        int h = TL_ROW_H;
 
+        // ── Token login row ─────────────────────────────────────────────────
         tokenlogin$tokenField = new EditBox(
-                this.font, x, y, fieldWidth, h,
+                this.font, 0, 0, TL_TOKEN_W, h,
                 Component.literal("Token"));
         tokenlogin$tokenField.setMaxLength(4096);
         tokenlogin$tokenField.setHint(Component.literal("Paste token..."));
-        this.addRenderableWidget(tokenlogin$tokenField);
+        tokenlogin$add(tokenlogin$tokenField);
 
         tokenlogin$loginButton = Button.builder(
                 Component.literal("Login"),
                 btn -> tokenlogin$handleLogin()
-        ).bounds(x + fieldWidth + gap, y, loginW, h).build();
-        this.addRenderableWidget(tokenlogin$loginButton);
+        ).bounds(0, 0, TL_LOGIN_W, h).build();
+        tokenlogin$add(tokenlogin$loginButton);
 
         tokenlogin$restoreButton = Button.builder(
                 Component.literal("Restore"),
                 btn -> tokenlogin$handleRestore()
-        ).bounds(x + fieldWidth + gap + loginW + gap, y, restoreW, h).build();
+        ).bounds(0, 0, TL_RESTORE_W, h).build();
         tokenlogin$restoreButton.active = tokenlogin$originalSession != null;
-        this.addRenderableWidget(tokenlogin$restoreButton);
+        tokenlogin$add(tokenlogin$restoreButton);
 
         tokenlogin$browseButton = Button.builder(
                 Component.literal("Browse..."),
                 btn -> tokenlogin$openBrowser()
-        ).bounds(x + fieldWidth + gap + loginW + gap + restoreW + gap, y, browseW, h).build();
-        this.addRenderableWidget(tokenlogin$browseButton);
+        ).bounds(0, 0, TL_BROWSE_W, h).build();
+        tokenlogin$add(tokenlogin$browseButton);
 
-        // ── Proxy (top-right) ────────────────────────────────────────────────
-        int addrW        = 120;
-        int btnW         = 56;
-        int browseProxyW = 52;
-        int halfW        = (addrW - gap) / 2;
-        int rightX       = this.width - addrW - btnW - gap - browseProxyW - gap - 4;
-        int row1Y        = 2;
-        int row2Y        = row1Y + h + gap;
-
-        tokenlogin$proxyAddressField = new EditBox(
-                this.font, rightX, row1Y, addrW, h,
-                Component.literal("Address"));
-        tokenlogin$proxyAddressField.setMaxLength(256);
-        tokenlogin$proxyAddressField.setHint(Component.literal("ip:port"));
-        tokenlogin$proxyAddressField.setValue(ProxyConfig.getAddress());
-        this.addRenderableWidget(tokenlogin$proxyAddressField);
-
-        tokenlogin$proxyConnectButton = Button.builder(
-                Component.literal("Connect"),
-                btn -> tokenlogin$handleProxyConnect()
-        ).bounds(rightX + addrW + gap, row1Y, btnW, h).build();
-        this.addRenderableWidget(tokenlogin$proxyConnectButton);
-
-        tokenlogin$proxyBrowseButton = Button.builder(
-                Component.literal("Browse..."),
-                btn -> tokenlogin$openProxyBrowser()
-        ).bounds(rightX + addrW + gap + btnW + gap, row1Y, browseProxyW, h).build();
-        this.addRenderableWidget(tokenlogin$proxyBrowseButton);
-
-        tokenlogin$proxyUserField = new EditBox(
-                this.font, rightX, row2Y, halfW, h,
-                Component.literal("Username"));
-        tokenlogin$proxyUserField.setMaxLength(256);
-        tokenlogin$proxyUserField.setHint(Component.literal("User"));
-        tokenlogin$proxyUserField.setValue(ProxyConfig.getUsername());
-        this.addRenderableWidget(tokenlogin$proxyUserField);
-
-        tokenlogin$proxyPassField = new PasswordFieldWidget(
-                this.font, rightX + halfW + gap, row2Y, halfW, h,
-                Component.literal("Password"));
-        tokenlogin$proxyPassField.setMaxLength(256);
-        tokenlogin$proxyPassField.setHint(Component.literal("Pass"));
-        tokenlogin$proxyPassField.setValue(ProxyConfig.getPassword());
-        this.addRenderableWidget(tokenlogin$proxyPassField);
-
-        tokenlogin$proxyDisconnectButton = Button.builder(
-                Component.literal("Off"),
-                btn -> tokenlogin$handleProxyDisconnect()
-        ).bounds(rightX + addrW + gap, row2Y, btnW + gap + browseProxyW, h).build();
-        tokenlogin$proxyDisconnectButton.active = ProxyManager.isEnabled();
-        this.addRenderableWidget(tokenlogin$proxyDisconnectButton);
-
-        // ── IGN changer (top-left) ───────────────────────────────────────────
-        int nameFieldW = 120;
-        int nameBtnW   = 50;
-        int modeBtnW   = 36;
-        int nameX      = 4;
-        int nameY      = 2;
-
-        tokenlogin$nameField = new EditBox(
-                this.font, nameX, nameY, nameFieldW, h,
-                Component.literal("IGN"));
-        tokenlogin$nameField.setMaxLength(16);
-        tokenlogin$nameField.setHint(Component.literal("New name..."));
-        this.addRenderableWidget(tokenlogin$nameField);
-
-        tokenlogin$nameChangeButton = Button.builder(
-                Component.literal("Change"),
-                btn -> tokenlogin$handleNameChange()
-        ).bounds(nameX + nameFieldW + gap, nameY, nameBtnW, h).build();
-        this.addRenderableWidget(tokenlogin$nameChangeButton);
-
-        tokenlogin$nameModeButton = Button.builder(
-                Component.literal(tokenlogin$nameApiMode ? "IGN" : "Hider"),
-                btn -> tokenlogin$toggleNameMode()
-        ).bounds(nameX + nameFieldW + gap + nameBtnW + gap, nameY, modeBtnW, h).build();
-        this.addRenderableWidget(tokenlogin$nameModeButton);
-
-        // ── AutoRec + Selfban (bottom-right) ─────────────────────────────────
-        int autoRecW   = 72;
-        int selfbanW   = 72;
-        int selfbanX   = this.width - selfbanW - 4;
-        int autoRecX   = selfbanX - autoRecW - gap;
-        int selfbanY   = this.height - h - 2;
-
+        // ── AutoRec + Selfban ───────────────────────────────────────────────
         tokenlogin$autoRecButton = Button.builder(
                 tokenlogin$autoRecLabel(),
                 btn -> { AutoReconnect.toggle(); btn.setMessage(tokenlogin$autoRecLabel()); }
-        ).bounds(autoRecX, selfbanY, autoRecW, h).build();
-        this.addRenderableWidget(tokenlogin$autoRecButton);
+        ).bounds(0, 0, TL_AUTOREC_W, h).build();
+        tokenlogin$add(tokenlogin$autoRecButton);
 
         tokenlogin$selfbanButton = Button.builder(
                 tokenlogin$selfbanLabel(),
                 btn -> tokenlogin$handleSelfbanToggle()
-        ).bounds(selfbanX, selfbanY, selfbanW, h).build();
-        this.addRenderableWidget(tokenlogin$selfbanButton);
+        ).bounds(0, 0, TL_SELFBAN_W, h).build();
+        tokenlogin$add(tokenlogin$selfbanButton);
 
+        // ── Proxy ───────────────────────────────────────────────────────────
+        int halfW = (TL_ADDR_W - TL_GAP) / 2;
+
+        tokenlogin$proxyAddressField = new EditBox(
+                this.font, 0, 0, TL_ADDR_W, h,
+                Component.literal("Address"));
+        tokenlogin$proxyAddressField.setMaxLength(256);
+        tokenlogin$proxyAddressField.setHint(Component.literal("ip:port"));
+        tokenlogin$proxyAddressField.setValue(ProxyConfig.getAddress());
+        tokenlogin$add(tokenlogin$proxyAddressField);
+
+        tokenlogin$proxyConnectButton = Button.builder(
+                Component.literal("Connect"),
+                btn -> tokenlogin$handleProxyConnect()
+        ).bounds(0, 0, TL_CONNECT_W, h).build();
+        tokenlogin$add(tokenlogin$proxyConnectButton);
+
+        tokenlogin$proxyBrowseButton = Button.builder(
+                Component.literal("Browse..."),
+                btn -> tokenlogin$openProxyBrowser()
+        ).bounds(0, 0, TL_PBROWSE_W, h).build();
+        tokenlogin$add(tokenlogin$proxyBrowseButton);
+
+        tokenlogin$proxyUserField = new EditBox(
+                this.font, 0, 0, halfW, h,
+                Component.literal("Username"));
+        tokenlogin$proxyUserField.setMaxLength(256);
+        tokenlogin$proxyUserField.setHint(Component.literal("User"));
+        tokenlogin$proxyUserField.setValue(ProxyConfig.getUsername());
+        tokenlogin$add(tokenlogin$proxyUserField);
+
+        tokenlogin$proxyPassField = new PasswordFieldWidget(
+                this.font, 0, 0, halfW, h,
+                Component.literal("Password"));
+        tokenlogin$proxyPassField.setMaxLength(256);
+        tokenlogin$proxyPassField.setHint(Component.literal("Pass"));
+        tokenlogin$proxyPassField.setValue(ProxyConfig.getPassword());
+        tokenlogin$add(tokenlogin$proxyPassField);
+
+        tokenlogin$proxyDisconnectButton = Button.builder(
+                Component.literal("Off"),
+                btn -> tokenlogin$handleProxyDisconnect()
+        ).bounds(0, 0, TL_CONNECT_W + TL_GAP + TL_PBROWSE_W, h).build();
+        tokenlogin$proxyDisconnectButton.active = ProxyManager.isEnabled();
+        tokenlogin$add(tokenlogin$proxyDisconnectButton);
+
+        // ── IGN changer ─────────────────────────────────────────────────────
+        tokenlogin$nameField = new EditBox(
+                this.font, 0, 0, TL_NAME_W, h,
+                Component.literal("IGN"));
+        tokenlogin$nameField.setMaxLength(16);
+        tokenlogin$nameField.setHint(Component.literal("New name..."));
+        tokenlogin$add(tokenlogin$nameField);
+
+        tokenlogin$nameChangeButton = Button.builder(
+                Component.literal("Change"),
+                btn -> tokenlogin$handleNameChange()
+        ).bounds(0, 0, TL_CHANGE_W, h).build();
+        tokenlogin$add(tokenlogin$nameChangeButton);
+
+        tokenlogin$nameModeButton = Button.builder(
+                Component.literal(tokenlogin$nameApiMode ? "IGN" : "Hider"),
+                btn -> tokenlogin$toggleNameMode()
+        ).bounds(0, 0, TL_MODE_W, h).build();
+        tokenlogin$add(tokenlogin$nameModeButton);
+
+        // ── Show / hide the whole mod UI (always in the free top-left gap) ──
+        tokenlogin$toggleButton = Button.builder(
+                tokenlogin$toggleLabel(),
+                btn -> {
+                    tokenlogin$uiHidden = !tokenlogin$uiHidden;
+                    btn.setMessage(tokenlogin$toggleLabel());
+                    this.clearFocus();   // a hidden EditBox must not keep the keyboard
+                    tokenlogin$layoutBands();
+                }
+        ).bounds(TL_PAD, (TL_VANILLA_HEADER - h) / 2, TL_TOGGLE_W, h).build();
+        this.addRenderableWidget(tokenlogin$toggleButton);
+
+        tokenlogin$layoutBands();
     }
 
-    @Unique private int tokenlogin$lastW = -1;
-    @Unique private int tokenlogin$lastH = -1;
+    @Unique
+    private void tokenlogin$add(AbstractWidget widget) {
+        tokenlogin$ourWidgets.add(widget);
+        this.addRenderableWidget(widget);
+    }
 
     @Unique
-    private void tokenlogin$repositionWidgets() {
+    private static Component tokenlogin$toggleLabel() {
+        return Component.literal(tokenlogin$uiHidden ? "Show UI" : "Hide UI");
+    }
+
+    // =====================================================================
+    // Band reservation
+    // =====================================================================
+
+    /**
+     * Grows the vanilla header/footer bands so our rows have room of their
+     * own, then lays everything out.  Re-entrant: the recursive
+     * repositionElements() lands back in tokenlogin$onReposition with the
+     * band sizes already applied.
+     */
+    @Unique
+    private void tokenlogin$layoutBands() {
         if (tokenlogin$tokenField == null) return;
 
-        int h          = 14;
-        int gap        = 2;
-        int fieldWidth = 120;
-        int loginW     = 44;
-        int restoreW   = 50;
-        int browseW    = 48;
+        tokenlogin$measureBands();
 
-        // Bottom-left: token row
-        int x = 4;
-        int y = this.height - h - 2;
-        tokenlogin$tokenField.setPosition(x, y);
-        tokenlogin$loginButton.setPosition(x + fieldWidth + gap, y);
-        tokenlogin$restoreButton.setPosition(x + fieldWidth + gap + loginW + gap, y);
-        tokenlogin$browseButton.setPosition(x + fieldWidth + gap + loginW + gap + restoreW + gap, y);
+        int wantHeader = TL_VANILLA_HEADER + (tokenlogin$uiHidden ? 0 : tokenlogin$topBand);
+        int wantFooter = TL_VANILLA_FOOTER + (tokenlogin$uiHidden ? 0 : tokenlogin$botBand);
 
-        // Top-right: proxy rows
-        int addrW        = 120;
-        int btnW         = 56;
-        int browseProxyW = 52;
-        int halfW        = (addrW - gap) / 2;
-        int rightX       = this.width - addrW - btnW - gap - browseProxyW - gap - 4;
-        int row1Y        = 2;
-        int row2Y        = row1Y + h + gap;
-        tokenlogin$proxyAddressField.setPosition(rightX, row1Y);
-        tokenlogin$proxyConnectButton.setPosition(rightX + addrW + gap, row1Y);
-        tokenlogin$proxyBrowseButton.setPosition(rightX + addrW + gap + btnW + gap, row1Y);
-        tokenlogin$proxyUserField.setPosition(rightX, row2Y);
-        tokenlogin$proxyPassField.setPosition(rightX + halfW + gap, row2Y);
-        tokenlogin$proxyDisconnectButton.setPosition(rightX + addrW + gap, row2Y);
+        if (this.layout.getHeaderHeight() != wantHeader || this.layout.getFooterHeight() != wantFooter) {
+            this.layout.setHeaderHeight(wantHeader);
+            this.layout.setFooterHeight(wantFooter);
+            this.repositionElements();   // re-arranges vanilla, then calls us back
+            return;
+        }
 
-        // Bottom-right: autorec + selfban (bottom row)
-        int autoRecW   = 72;
-        int selfbanW   = 72;
-        int selfbanX   = this.width - selfbanW - 4;
-        int autoRecX   = selfbanX - autoRecW - gap;
-        int selfbanY   = this.height - h - 2;
-        tokenlogin$autoRecButton.setPosition(autoRecX, selfbanY);
-        tokenlogin$selfbanButton.setPosition(selfbanX, selfbanY);
+        tokenlogin$pullVanillaToEdges();
+        tokenlogin$layoutWidgets();
+    }
+
+    @Inject(method = "repositionElements", at = @At("TAIL"))
+    private void tokenlogin$onReposition(CallbackInfo ci) {
+        tokenlogin$layoutBands();
+    }
+
+    /** Picks band heights for the current window width. */
+    @Unique
+    private void tokenlogin$measureBands() {
+        int nameCluster  = TL_NAME_W + TL_GAP + TL_CHANGE_W + TL_GAP + TL_MODE_W;
+        int proxyCluster = TL_ADDR_W + TL_GAP + TL_CONNECT_W + TL_GAP + TL_PBROWSE_W;
+        tokenlogin$stackTop =
+                TL_PAD + nameCluster + TL_CLUSTER_GAP + proxyCluster + TL_PAD > this.width;
+
+        int tokenCluster = TL_TOKEN_W + TL_GAP + TL_LOGIN_W + TL_GAP + TL_RESTORE_W + TL_GAP + TL_BROWSE_W;
+        int toggleCluster = TL_AUTOREC_W + TL_GAP + TL_SELFBAN_W;
+        tokenlogin$stackBottom =
+                TL_PAD + tokenCluster + TL_CLUSTER_GAP + toggleCluster + TL_PAD > this.width;
+
+        // top: [IGN | proxy row 1] [status | proxy row 2] [status text]
+        tokenlogin$topBand = tokenlogin$stackTop
+                ? 3 * (TL_ROW_H + TL_GAP) + 2 * (TL_TEXT_H + TL_GAP) + TL_GAP
+                : 2 * (TL_ROW_H + TL_GAP) + TL_TEXT_H + TL_GAP;
+
+        // bottom: [info text] [token row (| toggles)] (+ [toggles])
+        tokenlogin$botBand = tokenlogin$stackBottom
+                ? TL_TEXT_H + TL_GAP + 2 * (TL_ROW_H + TL_GAP) + TL_GAP
+                : TL_TEXT_H + TL_GAP + TL_ROW_H + 2 * TL_GAP;
+    }
+
+    /**
+     * HeaderAndFooterLayout centres each band's content, so growing a band
+     * pushes the vanilla title/buttons towards the middle of the screen.
+     * Shift them back by half the growth: the title keeps its vanilla spot
+     * and the vanilla button block sits directly above our bottom band.
+     */
+    @Unique
+    private void tokenlogin$pullVanillaToEdges() {
+        int headerShift = (this.layout.getHeaderHeight() - TL_VANILLA_HEADER) / 2;
+        int footerShift = (this.layout.getFooterHeight() - TL_VANILLA_FOOTER) / 2;
+        int footerTop   = this.height - this.layout.getFooterHeight();
+
+        for (GuiEventListener child : this.children()) {
+            if (!(child instanceof AbstractWidget widget)) continue;
+            if (widget == tokenlogin$toggleButton || tokenlogin$ourWidgets.contains(widget)) continue;
+
+            if (widget.getY() >= footerTop) {
+                widget.setY(widget.getY() - footerShift);
+            } else if (widget instanceof AbstractStringWidget) {
+                widget.setY(widget.getY() - headerShift);
+            }
+        }
+    }
+
+    // =====================================================================
+    // Our own rows
+    // =====================================================================
+
+    @Unique
+    private void tokenlogin$layoutWidgets() {
+        // visible == false also stops AbstractWidget from taking clicks
+        boolean show = !tokenlogin$uiHidden;
+        for (AbstractWidget w : tokenlogin$ourWidgets) w.visible = show;
+        if (!show) return;
+
+        int h    = TL_ROW_H;
+        int gap  = TL_GAP;
+        int pad  = TL_PAD;
+
+        // ── top band: starts right below the vanilla title row ──────────────
+        int topY = TL_VANILLA_HEADER + gap;
+
+        int nameX = pad;
+        tokenlogin$nameField.setPosition(nameX, topY);
+        tokenlogin$nameChangeButton.setPosition(nameX + TL_NAME_W + gap, topY);
+        tokenlogin$nameModeButton.setPosition(nameX + TL_NAME_W + gap + TL_CHANGE_W + gap, topY);
+
+        int proxyCluster = TL_ADDR_W + gap + TL_CONNECT_W + gap + TL_PBROWSE_W;
+        int proxyX       = this.width - pad - proxyCluster;
+        int proxyRow1    = tokenlogin$stackTop ? topY + h + gap + TL_TEXT_H + gap : topY;
+        int proxyRow2    = proxyRow1 + h + gap;
+        if (tokenlogin$stackTop) proxyX = pad;
+
+        tokenlogin$proxyAddressField.setPosition(proxyX, proxyRow1);
+        tokenlogin$proxyConnectButton.setPosition(proxyX + TL_ADDR_W + gap, proxyRow1);
+        tokenlogin$proxyBrowseButton.setPosition(proxyX + TL_ADDR_W + gap + TL_CONNECT_W + gap, proxyRow1);
+
+        int halfW = (TL_ADDR_W - gap) / 2;
+        tokenlogin$proxyUserField.setPosition(proxyX, proxyRow2);
+        tokenlogin$proxyPassField.setPosition(proxyX + halfW + gap, proxyRow2);
+        tokenlogin$proxyDisconnectButton.setPosition(proxyX + TL_ADDR_W + gap, proxyRow2);
+
+        tokenlogin$nameStatusY  = topY + h + gap;
+        tokenlogin$proxyStatusY = proxyRow2 + h + gap;
+
+        // ── bottom band: below the vanilla button block ─────────────────────
+        int toggleRowY = this.height - gap - h;
+        int tokenRowY  = tokenlogin$stackBottom ? toggleRowY - h - gap : toggleRowY;
+        tokenlogin$infoY = tokenRowY - gap - (TL_TEXT_H - 1);
+
+        tokenlogin$tokenField.setPosition(pad, tokenRowY);
+        tokenlogin$loginButton.setPosition(pad + TL_TOKEN_W + gap, tokenRowY);
+        tokenlogin$restoreButton.setPosition(pad + TL_TOKEN_W + gap + TL_LOGIN_W + gap, tokenRowY);
+        tokenlogin$browseButton.setPosition(
+                pad + TL_TOKEN_W + gap + TL_LOGIN_W + gap + TL_RESTORE_W + gap, tokenRowY);
+
+        int selfbanX = this.width - pad - TL_SELFBAN_W;
+        tokenlogin$autoRecButton.setPosition(selfbanX - TL_AUTOREC_W - gap, toggleRowY);
+        tokenlogin$selfbanButton.setPosition(selfbanX, toggleRowY);
+
+        // ── toggle button: free gap left of the centred vanilla title ───────
+        tokenlogin$toggleButton.setPosition(pad, (TL_VANILLA_HEADER - h) / 2);
+
+        tokenlogin$restoreButton.active        = tokenlogin$originalSession != null;
+        tokenlogin$proxyDisconnectButton.active = ProxyManager.isEnabled();
     }
 
     // =====================================================================
@@ -291,126 +457,84 @@ public abstract class MultiplayerScreenMixin extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor extractor, int mouseX, int mouseY, float deltaTicks) {
-        if (this.width != tokenlogin$lastW || this.height != tokenlogin$lastH) {
-            tokenlogin$lastW = this.width;
-            tokenlogin$lastH = this.height;
-            tokenlogin$repositionWidgets();
-        }
         // Keep selfban button label in sync — disable() can be called from the tick thread
         if (tokenlogin$selfbanButton != null) {
             tokenlogin$selfbanButton.setMessage(tokenlogin$selfbanLabel());
         }
+        if (!tokenlogin$uiHidden) tokenlogin$renderBands(extractor);
         super.extractRenderState(extractor, mouseX, mouseY, deltaTicks);
-        tokenlogin$renderTokenInfo(extractor);
-        tokenlogin$renderProxyStatus(extractor);
-        tokenlogin$renderNameStatus(extractor);
     }
 
     @Unique
-    private void tokenlogin$renderTokenInfo(GuiGraphicsExtractor context) {
-        int h = 14;
+    private void tokenlogin$renderBands(GuiGraphicsExtractor context) {
+        int pad = TL_PAD;
 
-        // Widget row sits at the very bottom
-        int widgetY     = this.height - h - 2;
-        int stripBottom = widgetY - 2;
-        // Reduced strip height — was 26, now 20 — less overlap with buttons above
-        int stripTop    = stripBottom - 20;
+        // Band backgrounds, so the text on them stays readable over the dirt/panorama
+        int topTop    = TL_VANILLA_HEADER;
+        int topBottom = topTop + tokenlogin$topBand;
+        context.fill(0, topTop, this.width, topBottom, 0x99000000);
+        context.fill(0, this.height - tokenlogin$botBand, this.width, this.height, 0x99000000);
 
-        // Right edge of the Browse button
-        int fieldWidth = 120;
-        int loginW     = 44;
-        int restoreW   = 50;
-        int browseW    = 48;
-        int gap        = 2;
-        int bgLeft     = 0;
-        int bgRight    = 4 + fieldWidth + gap + loginW + gap + restoreW + gap + browseW + 4;
+        // ── top band text: IGN / nick status (left), proxy status (right) ───
+        String nameMsg = tokenlogin$nameApiMode
+                ? NameChanger.getStatusMessage() : NickHider.getStatusMessage();
+        int nameColor = tokenlogin$nameApiMode
+                ? NameChanger.getStatusColor() : NickHider.getStatusColor();
+        if (!nameMsg.isEmpty()) {
+            context.text(this.font, Component.literal(tokenlogin$fit(nameMsg, this.width / 2 - pad * 2)),
+                    pad, tokenlogin$nameStatusY, nameColor, true);
+        }
 
-        context.fill(bgLeft, stripTop, bgRight, stripBottom, 0xBB000000);
+        String proxyMsg   = ProxyManager.getStatusMessage();
+        int    proxyColor = ProxyManager.getStatusColor();
+        if (proxyMsg.isEmpty()) { proxyMsg = "No proxy"; proxyColor = 0xFF888888; }
+        proxyMsg = tokenlogin$fit(proxyMsg, this.width / 2 - pad * 2);
+        int proxyMsgX = tokenlogin$stackTop ? pad : this.width - pad - this.font.width(proxyMsg);
+        context.text(this.font, Component.literal(proxyMsg),
+                proxyMsgX, tokenlogin$proxyStatusY, proxyColor, true);
 
+        // ── bottom band text: session (left), token validity (right) ────────
         String username = NickHider.isEnabled()
                 ? NickHider.getFakeName()
                 : (this.minecraft != null ? this.minecraft.getUser().getName() : "unknown");
 
-        context.text(this.font,
-                Component.literal("Logged in as: " + username),
-                4, stripTop + 3, 0xFFFFFFFF, true);
-
-        String line2;
-        int    color2;
-
+        String tokenMsg;
+        int    tokenColor;
         if (!tokenlogin$errorMessage.isEmpty()) {
-            line2  = tokenlogin$errorMessage;
-            color2 = 0xFFFF5555;
+            tokenMsg   = tokenlogin$errorMessage;
+            tokenColor = 0xFFFF5555;
         } else if (tokenlogin$expiryEpoch > 0) {
             long diff = tokenlogin$expiryEpoch - (System.currentTimeMillis() / 1000L);
             if (diff <= 0) {
-                line2  = "Token expired";
-                color2 = 0xFFFF5555;
+                tokenMsg   = "Token expired";
+                tokenColor = 0xFFFF5555;
             } else {
-                color2 = diff < 300 ? 0xFFFF5555 : (diff < 1800 ? 0xFFFFAA00 : 0xFF55FF55);
-                line2  = "Valid: " + tokenlogin$fmtDuration(diff);
+                tokenColor = diff < 300 ? 0xFFFF5555 : (diff < 1800 ? 0xFFFFAA00 : 0xFF55FF55);
+                tokenMsg   = "Valid: " + tokenlogin$fmtDuration(diff);
             }
         } else {
-            line2  = "No token loaded";
-            color2 = 0xFF888888;
+            tokenMsg   = "No token loaded";
+            tokenColor = 0xFF888888;
         }
 
-        // Only draw line 2 if there's room (strip is now 20px, line needs ~9px each)
-        if (stripBottom - stripTop >= 20) {
-            context.text(this.font,
-                    Component.literal(line2),
-                    4, stripTop + 3 + 10, color2, true);
-        }
+        tokenMsg = tokenlogin$fit(tokenMsg, this.width / 2 - pad * 2);
+        int tokenMsgW = this.font.width(tokenMsg);
+
+        String sessionMsg = tokenlogin$fit("Logged in as: " + username,
+                this.width - tokenMsgW - pad * 3);
+        context.text(this.font, Component.literal(sessionMsg),
+                pad, tokenlogin$infoY, 0xFFFFFFFF, true);
+        context.text(this.font, Component.literal(tokenMsg),
+                this.width - pad - tokenMsgW, tokenlogin$infoY, tokenColor, true);
     }
 
+    /** Truncates to maxWidth so band text never runs under the widgets beside it. */
     @Unique
-    private void tokenlogin$renderProxyStatus(GuiGraphicsExtractor context) {
-        int h       = 14;
-        int statusY = 2 + h + 2 + h + 3;
-        int addrW   = 120;
-        int btnW    = 56;
-        int browseProxyW = 52;
-        int gap     = 2;
-        int rightX  = this.width - addrW - btnW - gap - browseProxyW - gap - 4;
-
-        context.fill(rightX - 4, statusY - 2, this.width - 2, statusY + 11, 0xBB000000);
-
-        String msg   = ProxyManager.getStatusMessage();
-        int    color = ProxyManager.getStatusColor();
-        if (msg.isEmpty()) { msg = "No proxy"; color = 0xFF888888; }
-        context.text(this.font, Component.literal(msg), rightX, statusY, color, true);
+    private String tokenlogin$fit(String text, int maxWidth) {
+        if (maxWidth <= 0 || this.font.width(text) <= maxWidth) return text;
+        int ellipsis = this.font.width("...");
+        return this.font.plainSubstrByWidth(text, Math.max(0, maxWidth - ellipsis)) + "...";
     }
-
-    @Unique
-    private void tokenlogin$renderNameStatus(GuiGraphicsExtractor context) {
-        int h          = 14;
-        int statusY    = 2 + h + 3;
-        int nameFieldW = 120;
-        int nameBtnW   = 50;
-        int modeBtnW   = 36;
-        int gap        = 2;
-
-        int bgLeft   = 0;
-        int bgRight  = 4 + nameFieldW + gap + nameBtnW + gap + modeBtnW + 4;
-        int bgTop    = statusY - 2;
-        int bgBottom = statusY + 11;
-
-        String msg;
-        int    color;
-        if (tokenlogin$nameApiMode) {
-            msg   = NameChanger.getStatusMessage();
-            color = NameChanger.getStatusColor();
-        } else {
-            msg   = NickHider.getStatusMessage();
-            color = NickHider.getStatusColor();
-        }
-
-        if (!msg.isEmpty()) {
-            context.fill(bgLeft, bgTop, bgRight, bgBottom, 0xBB000000);
-            context.text(this.font, Component.literal(msg), 4, statusY, color, true);
-        }
-    }
-
     // =====================================================================
     // Token Browser
     // =====================================================================
