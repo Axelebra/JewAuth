@@ -7,20 +7,48 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 
 /**
- * Manual refresh tester — enter a client_id and refresh_token,
- * pick an endpoint, hit Refresh, see the result.
+ * Manual refresh tester — pick a launcher, paste a refresh_token,
+ * hit Refresh, see the result.
  */
 public class ManualRefreshScreen extends Screen {
 
+    /**
+     * Client ID + auth chain shape per launcher. liveAuth picks the endpoint;
+     * scope/redirectUri are step-1 overrides, null = endpoint default.
+     */
+    private enum LauncherPreset {
+        PRISM("Launcher: Prism", "c36a9fb6-4f2a-41ff-90bd-ae7cc92031eb", false, null, null),
+        LUNAR("Launcher: Lunar", "4358653d-21f6-4697-96bb-7963ff974196", false, "XboxLive.signin offline_access", null),
+        MODRINTH("Launcher: Modrinth", "00000000402B5328", true, "service::user.auth.xboxlive.com::MBI_SSL", "https://login.live.com/oauth20_desktop.srf");
+
+        final String label;
+        final String clientId;
+        final boolean liveAuth;
+        final String scope;
+        final String redirectUri;
+
+        LauncherPreset(String label, String clientId, boolean liveAuth, String scope, String redirectUri) {
+            this.label = label;
+            this.clientId = clientId;
+            this.liveAuth = liveAuth;
+            this.scope = scope;
+            this.redirectUri = redirectUri;
+        }
+
+        LauncherPreset next() {
+            return values()[(ordinal() + 1) % values().length];
+        }
+    }
+
     private final Screen parent;
 
-    private EditBox clientIdField;
     private EditBox refreshTokenField;
-    private Button    endpointButton;
+    private Button    launcherButton;
     private Button    refreshButton;
     private Button    copyButton;
     private Button    backButton;
 
+    private LauncherPreset launcherPreset = LauncherPreset.PRISM;
     private boolean liveAuth = false;
 
     private String outputText  = "";
@@ -30,7 +58,6 @@ public class ManualRefreshScreen extends Screen {
     private boolean running = false;
 
     // Track y positions of labels so render() stays in sync with init()
-    private int labelClientIdY;
     private int labelRefreshY;
     private int outputBoxY;
 
@@ -46,17 +73,6 @@ public class ManualRefreshScreen extends Screen {
         int left   = cx - fieldW / 2;
         int y      = 36;
 
-        // ── Client ID ─────────────────────────────────────────────────────
-        labelClientIdY = y;
-        y += 12;
-        clientIdField = new EditBox(
-                this.font, left, y, fieldW, 20,
-                Component.literal("Client ID"));
-        clientIdField.setMaxLength(256);
-        clientIdField.setSuggestion("Client ID");
-        this.addRenderableWidget(clientIdField);
-        y += 20 + 18;
-
         // ── Refresh Token ─────────────────────────────────────────────────
         labelRefreshY = y;
         y += 12;
@@ -68,16 +84,17 @@ public class ManualRefreshScreen extends Screen {
         this.addRenderableWidget(refreshTokenField);
         y += 20 + 18;
 
-        // ── Endpoint toggle ───────────────────────────────────────────────
-        endpointButton = Button.builder(
-                Component.literal(endpointLabel()),
+        // ── Launcher preset ──────────────────────────────────────────────
+        launcherButton = Button.builder(
+                Component.literal(launcherPreset.label),
                 btn -> {
-                    liveAuth = !liveAuth;
-                    btn.setMessage(Component.literal(endpointLabel()));
+                    launcherPreset = launcherPreset.next();
+                    liveAuth = launcherPreset.liveAuth;
+                    btn.setMessage(Component.literal(launcherPreset.label));
                     setFocused(null);
                 }
         ).bounds(left, y, fieldW, 20).build();
-        this.addRenderableWidget(endpointButton);
+        this.addRenderableWidget(launcherButton);
         y += 20 + 16;
 
         // ── Refresh button ────────────────────────────────────────────────
@@ -113,13 +130,9 @@ public class ManualRefreshScreen extends Screen {
         this.addRenderableWidget(backButton);
     }
 
-    private String endpointLabel() {
-        return "Endpoint: " + (liveAuth ? "login.live.com" : "microsoftonline.com");
-    }
-
     private void doRefresh() {
         if (running) return;
-        String cid = clientIdField.getValue().strip();
+        String cid = launcherPreset.clientId;
         String rt  = refreshTokenField.getValue().strip();
 
         if (cid.isBlank()) { outputText = "Client ID is empty."; outputColor = 0xFFFF5555; return; }
@@ -132,11 +145,13 @@ public class ManualRefreshScreen extends Screen {
         refreshButton.active = false;
 
         boolean live = this.liveAuth;
+        String scope = launcherPreset.scope;
+        String redirectUri = launcherPreset.redirectUri;
         Thread t = new Thread(() -> {
             try {
                 ProxyEntry proxy = MicrosoftAuthChain.grabProxy();
                 MicrosoftAuthChain.RefreshResult result =
-                        MicrosoftAuthChain.refresh(rt, cid, live, proxy);
+                        MicrosoftAuthChain.refresh(rt, cid, live, scope, redirectUri, proxy);
                 this.minecraft.execute(() -> {
                     running = false;
                     refreshButton.active = true;
@@ -171,8 +186,6 @@ public class ManualRefreshScreen extends Screen {
                 Component.literal("Manual Refresh"), cx, 14, 0xFFFFFFFF);
 
         // Field labels
-        Gfx.textShadow(ctx, this.font, Component.literal("Client ID"),
-                left, labelClientIdY, 0xFF888888);
         Gfx.textShadow(ctx, this.font, Component.literal("Refresh Token"),
                 left, labelRefreshY, 0xFF888888);
 

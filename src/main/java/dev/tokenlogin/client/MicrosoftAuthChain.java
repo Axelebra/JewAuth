@@ -47,6 +47,14 @@ public class MicrosoftAuthChain {
      * @throws Exception with a human-readable message on any failure.
      */
     public static RefreshResult refresh(String refreshToken, String clientId, boolean liveAuth, ProxyEntry proxy) throws Exception {
+        return refresh(refreshToken, clientId, liveAuth, null, null, proxy);
+    }
+
+    /**
+     * Same as above, but with per-launcher overrides for the scope / redirect_uri sent in
+     * step 1. Pass null for either to use the default for the chosen endpoint.
+     */
+    public static RefreshResult refresh(String refreshToken, String clientId, boolean liveAuth, String scopeOverride, String redirectUri, ProxyEntry proxy) throws Exception {
         activeRefreshProxy.set(proxy);
 
         List<ProxyEntry> allProxies = ProxyConfig.getProxies();
@@ -56,7 +64,7 @@ public class MicrosoftAuthChain {
         while (true) {
             try {
                 setupProxyAuth(proxy);
-                RefreshResult result = doRefresh(refreshToken, clientId, liveAuth);
+                RefreshResult result = doRefresh(refreshToken, clientId, liveAuth, scopeOverride, redirectUri);
                 return result;
             } catch (Exception e) {
                 if (isNetworkError(e) && proxy != null && skips < maxSkips) {
@@ -75,12 +83,12 @@ public class MicrosoftAuthChain {
     }
 
     /** The actual auth chain — separated so retry logic stays clean. */
-    private static RefreshResult doRefresh(String refreshToken, String clientId, boolean liveAuth) throws Exception {
+    private static RefreshResult doRefresh(String refreshToken, String clientId, boolean liveAuth, String scopeOverride, String redirectUri) throws Exception {
         // Step 1
-        MSTokenResult ms = refreshMsToken(refreshToken, clientId, liveAuth);
+        MSTokenResult ms = refreshMsToken(refreshToken, clientId, liveAuth, scopeOverride, redirectUri);
 
         // Step 2
-        XBLResult xbl = authenticateXBL(ms.accessToken());
+        XBLResult xbl = authenticateXBL(ms.accessToken(), liveAuth);
 
         // Step 3
         String xstsToken = authenticateXSTS(xbl.token());
@@ -94,33 +102,32 @@ public class MicrosoftAuthChain {
 
     // ── Step 1: Microsoft OAuth token refresh ─────────────────────────────────
     //
-    // liveAuth=true  → GDLauncher accounts → login.live.com
-    //   scope: offline_access xboxlive.signin xboxlive.offline_access
-    //   (as per GDLauncher source, constants.js + api.js msOAuthRefresh)
-    //
-    // liveAuth=false → Prism/MultiMC     → login.microsoftonline.com
-    //   client_id and scope as-is from the launcher file
+    // liveAuth=true  → login.live.com           (Modrinth, GDLauncher)
+    // liveAuth=false → login.microsoftonline.com (Prism, Lunar)
 
     private record MSTokenResult(String accessToken, String refreshToken) {}
 
-    private static MSTokenResult refreshMsToken(String refreshToken, String clientId, boolean liveAuth) throws Exception {
-        final String endpoint;
-        final String body;
+    private static MSTokenResult refreshMsToken(String refreshToken, String clientId, boolean liveAuth, String scopeOverride, String redirectUri) throws Exception {
+        String endpoint = liveAuth
+                ? "https://login.live.com/oauth20_token.srf"
+                : "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 
-        if (liveAuth) {
-            endpoint = "https://login.live.com/oauth20_token.srf";
-            body = "client_id="     + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
-                 + "&grant_type=refresh_token"
-                 + "&refresh_token=" + URLEncoder.encode(refreshToken, StandardCharsets.UTF_8)
-                 + "&scope="         + URLEncoder.encode("offline_access xboxlive.signin xboxlive.offline_access", StandardCharsets.UTF_8);
-        } else {
-            endpoint = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
-            body = "client_id="     + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
-                 + "&grant_type=refresh_token"
-                 + "&refresh_token=" + URLEncoder.encode(refreshToken, StandardCharsets.UTF_8);
+        String scope = scopeOverride != null
+                ? scopeOverride
+                : (liveAuth ? "offline_access xboxlive.signin xboxlive.offline_access" : null);
+
+        StringBuilder body = new StringBuilder();
+        body.append("client_id=").append(URLEncoder.encode(clientId, StandardCharsets.UTF_8))
+            .append("&grant_type=refresh_token")
+            .append("&refresh_token=").append(URLEncoder.encode(refreshToken, StandardCharsets.UTF_8));
+        if (redirectUri != null && !redirectUri.isBlank()) {
+            body.append("&redirect_uri=").append(URLEncoder.encode(redirectUri, StandardCharsets.UTF_8));
+        }
+        if (scope != null && !scope.isBlank()) {
+            body.append("&scope=").append(URLEncoder.encode(scope, StandardCharsets.UTF_8));
         }
 
-        JsonObject json = postForm(endpoint, body);
+        JsonObject json = postForm(endpoint, body.toString());
 
         if (!json.has("access_token")) {
             throw new Exception("MS refresh failed: " + extractError(json));
@@ -137,11 +144,12 @@ public class MicrosoftAuthChain {
 
     private record XBLResult(String token, String userHash) {}
 
-    private static XBLResult authenticateXBL(String msAccessToken) throws Exception {
+    private static XBLResult authenticateXBL(String msAccessToken, boolean liveAuth) throws Exception {
         JsonObject props = new JsonObject();
         props.addProperty("AuthMethod", "RPS");
         props.addProperty("SiteName",   "user.auth.xboxlive.com");
-        props.addProperty("RpsTicket",  "d=" + msAccessToken);
+        // Only microsoftonline.com tokens take the "d=" prefix.
+        props.addProperty("RpsTicket",  liveAuth ? msAccessToken : "d=" + msAccessToken);
 
         JsonObject reqBody = new JsonObject();
         reqBody.add("Properties",   props);
